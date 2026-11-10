@@ -104,6 +104,21 @@ class FoundationCheck extends BaseCommand
                 $this->check(in_array($status, [302, 303], true), 'Shield login accepted for '.$group.' (HTTP '.$status.')');
                 [$status, $home] = $http('GET', '');
                 $this->check($status === 200 && str_contains($home, 'verify'.$suffix), 'Authenticated session for '.$group);
+                [$status, $dashboard] = $http('GET', 'dashboard');
+                $this->check($status === 200 && str_contains($dashboard, 'illustrative demo data'), 'Dashboard preview is authenticated and labeled');
+                foreach ((new \App\Services\NavigationService())->destinations($user) as $destination) {
+                    if ($destination['slug'] === 'dashboard') { continue; }
+                    [$pageStatus, $page] = $http('GET', 'modules/'.$destination['slug']);
+                    $this->check($pageStatus === 200 && str_contains($page, 'Coming Soon'), 'Placeholder route: '.$destination['slug']);
+                }
+                [$unknownStatus] = $http('GET', 'modules/not-a-module');
+                $this->check($unknownStatus === 404, 'Unknown module returns 404');
+                if ($group === 'user') {
+                    [$settingsStatus] = $http('GET', 'modules/settings');
+                    $this->check($settingsStatus === 404, 'Ordinary users cannot access Settings placeholder');
+                }
+                [$status, $account] = $http('GET', 'account');
+                $this->check($status === 200 && str_contains($account, 'My account'), 'Account summary remains authenticated');
                 [$status, $admin] = $http('GET', 'admin');
                 $this->check($group === 'admin' ? ($status === 200 && str_contains($admin, 'Administrator access verified')) : $status === 302, 'Administrator role enforced for '.$group);
                 [$status] = $http('GET', 'logout');
