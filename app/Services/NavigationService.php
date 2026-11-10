@@ -19,8 +19,8 @@ class NavigationService
                     $children[] = ['slug' => $childSlug, 'label' => $childLabel, 'url' => site_url('modules/'.$childSlug), 'parent' => $slug];
                 }
                 $sections[$title][] = ['slug' => $slug, 'label' => $label, 'icon' => $icon,
-                    'url' => $slug === 'dashboard' ? site_url('dashboard') : site_url('modules/'.$slug),
-                    'comingSoon' => $slug !== 'dashboard', 'children' => $children];
+                    'url' => in_array($slug, ['dashboard', 'clients'], true) ? site_url($slug) : site_url('modules/'.$slug),
+                    'comingSoon' => !in_array($slug, ['dashboard', 'clients'], true), 'children' => $children];
             }
         }
         return $sections;

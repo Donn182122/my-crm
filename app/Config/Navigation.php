@@ -11,7 +11,7 @@ class Navigation extends BaseConfig
     public array $sections = [
         'Workspace' => [
             ['dashboard', 'Dashboard', 'dashboard'], ['events', 'Events', 'calendar'],
-            ['clients', 'Clients', 'users'], ['projects', 'Projects', 'folder'],
+            ['clients', 'Clients', 'users', [], 'clients.view'], ['projects', 'Projects', 'folder'],
             ['tasks', 'Tasks', 'check'], ['leads', 'Leads', 'layers'],
             ['subscriptions', 'Subscriptions', 'repeat'],
         ],

@@ -63,3 +63,13 @@ Business modules, customer-data imports, payments, external integrations and pro
 PowerShell commands above use RemoteSigned only for the launched process, allowing these locally authored scripts without changing machine or user policy. Authentication request-debug capture is disabled in development so passwords and session cookies cannot be persisted by the debug toolbar. Exception argument traces are also disabled.
 
 The application login controller wraps Shield's login action and removes raw old-form input before session persistence. This prevents failed-login passwords from entering file sessions. The HTTP regression test checks a generated invalid password is absent from session storage and verifies authentication requests do not create debug payload files.
+
+## Phase 4A: Clients
+
+Clients management is available at http://localhost:8081/clients. Administrators manage all clients and shared groups/statuses. Ordinary users manage only clients they create. Company/individual records support contacts, addresses, group memberships, search/filtering/pagination and archive/restore. No other business modules have been implemented.
+
+Apply reviewed application migrations with `C:\xampp\php\php.exe spark migrate` on a newly configured independent database after upstream Shield/settings migrations. Do not point this project at the reference CRM database. The Clients migration adds six independent tables and three initial account statuses; it does not copy records or alter administrator credentials.
+
+With the local development server running, run `C:\xampp\php\php.exe spark clients:check` for the real MariaDB/HTTP Clients regression checks. Run this separately from `foundation:check` so their temporary authentication fixtures do not overlap. Both commands remove their fictional fixtures. The regular `test.ps1` suite tests Clients services/policies with isolated SQLite memory databases.
+
+See [Phase 4A implementation and verification](docs/phase-4a-clients.md) for the schema, permissions, changed files, test results and current limits. The authenticated UI now uses `Dashboard` and `Clients` controllers with shared layout views. `ClientService` owns Clients validation and persistence; `ClientPolicy` enforces action permissions and record ownership. Authentication/session/CSRF configuration and the private environment file remain in place.
