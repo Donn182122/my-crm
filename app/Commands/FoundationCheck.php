@@ -31,7 +31,7 @@ class FoundationCheck extends BaseCommand
         }
         $fk = $db->query("SELECT COUNT(*) AS n FROM information_schema.TABLE_CONSTRAINTS WHERE TABLE_SCHEMA=DATABASE() AND CONSTRAINT_TYPE='FOREIGN KEY'")->getRow()->n;
         $this->check((int) $fk >= 4, 'Authentication foreign keys exist');
-        $this->check(count($db->table('migrations')->get()->getResultArray()) === 5, 'Four upstream migrations and the Clients migration recorded');
+        $this->check(count($db->table('migrations')->get()->getResultArray()) === 6, 'Four upstream migrations plus Clients and Leads migrations recorded');
 
         $debugBefore = glob(WRITEPATH.'debugbar/*.json') ?: [];
         $provider = auth()->getProvider();
@@ -107,7 +107,7 @@ class FoundationCheck extends BaseCommand
                 [$status, $dashboard] = $http('GET', 'dashboard');
                 $this->check($status === 200 && str_contains($dashboard, 'illustrative demo data'), 'Dashboard preview is authenticated and labeled');
                 foreach ((new \App\Services\NavigationService())->destinations($user) as $destination) {
-                    if (in_array($destination['slug'], ['dashboard', 'clients'], true)) { continue; }
+                    if (in_array($destination['slug'], ['dashboard', 'clients', 'leads'], true)) { continue; }
                     [$pageStatus, $page] = $http('GET', 'modules/'.$destination['slug']);
                     $this->check($pageStatus === 200 && str_contains($page, 'Coming Soon'), 'Placeholder route: '.$destination['slug']);
                 }

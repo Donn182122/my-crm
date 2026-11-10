@@ -5,7 +5,7 @@
     <meta name="color-scheme" content="dark"><title><?= esc($title) ?> | My CRM</title>
     <link rel="stylesheet" href="<?= base_url('assets/bootstrap/bootstrap.min.css') ?>">
     <link rel="stylesheet" href="<?= base_url('assets/css/app.css') ?>">
-    <?php if ($active === 'clients'): ?><link rel="stylesheet" href="<?= base_url('assets/css/clients.css') ?>"><!-- Clients stylesheet --><?php endif ?>
+    <?php if (in_array($active, ['clients', 'leads'], true)): ?><link rel="stylesheet" href="<?= base_url('assets/css/clients.css') ?>"><!-- Clients stylesheet --><?php endif ?>
 </head>
 <body>
 <a class="skip-link" href="#main-content">Skip to content</a>

@@ -33,3 +33,21 @@ $routes->group('clients', ['filter'=>['session','permission:clients.view']], sta
     $routes->post('(:num)/(contacts|addresses)/(:num)', 'Clients::childUpdate/$1/$2/$3');
     $routes->post('(:num)/(contacts|addresses)/(:num)/remove', 'Clients::childRemove/$1/$2/$3');
 });
+
+// Leads foundation: no Kanban or conversion endpoints in this phase.
+$routes->group('leads', ['filter'=>['session','permission:leads.view']], static function ($routes) {
+    $routes->get('', 'Leads::index');
+    $routes->get('new', 'Leads::create');
+    $routes->post('', 'Leads::store');
+    $routes->get('(:num)', 'Leads::show/$1');
+    $routes->get('(:num)/edit', 'Leads::edit/$1');
+    $routes->post('(:num)', 'Leads::update/$1');
+    $routes->post('(:num)/archive', 'Leads::archive/$1');
+    $routes->post('(:num)/restore', 'Leads::restore/$1');
+    $routes->post('(:num)/reopen', 'Leads::reopen/$1');
+    $routes->get('(:num)/(contacts|addresses)/new', 'Leads::childCreate/$1/$2');
+    $routes->post('(:num)/(contacts|addresses)', 'Leads::childStore/$1/$2');
+    $routes->get('(:num)/(contacts|addresses)/(:num)/edit', 'Leads::childEdit/$1/$2/$3');
+    $routes->post('(:num)/(contacts|addresses)/(:num)', 'Leads::childUpdate/$1/$2/$3');
+    $routes->post('(:num)/(contacts|addresses)/(:num)/remove', 'Leads::childRemove/$1/$2/$3');
+});

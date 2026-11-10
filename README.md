@@ -73,3 +73,13 @@ Apply reviewed application migrations with `C:\xampp\php\php.exe spark migrate` 
 With the local development server running, run `C:\xampp\php\php.exe spark clients:check` for the real MariaDB/HTTP Clients regression checks. Run this separately from `foundation:check` so their temporary authentication fixtures do not overlap. Both commands remove their fictional fixtures. The regular `test.ps1` suite tests Clients services/policies with isolated SQLite memory databases.
 
 See [Phase 4A implementation and verification](docs/phase-4a-clients.md) for the schema, permissions, changed files, test results and current limits. The authenticated UI now uses `Dashboard` and `Clients` controllers with shared layout views. `ClientService` owns Clients validation and persistence; `ClientPolicy` enforces action permissions and record ownership. Authentication/session/CSRF configuration and the private environment file remain in place.
+
+## Phase 4B-1: Leads foundation
+
+Leads management is available at http://localhost:8081/leads. Administrators manage all leads and may assign eligible active users; ordinary users manage assigned leads only. Every mutation uses a version token, and stale changes return HTTP 409. Contacts, addresses, archive/restore and history are supported. Lost leads are read-only until an authorized explicit reopen operation; Converted is reserved for the next phase.
+
+On the independent database only, apply the reviewed additive migration with `C:\xampp\php\php.exe spark migrate`, then run `C:\xampp\php\php.exe spark db:seed LeadReferenceSeeder`. The seeder is idempotent and preserves existing reference customizations. It does not copy or overwrite Clients records.
+
+Run `C:\xampp\php\php.exe spark leads:check` while dev.ps1 is serving the application. Run it sequentially with foundation:check and clients:check; it uses generated fictional fixtures and honors real login rate limits with bounded waits. test.ps1 includes isolated Leads tests.
+
+See [Phase 4B-1 verification](docs/phase-4b-1-leads.md) and [Phase 4B-2 plan](docs/phase-4b-2-plan.md). Kanban and lead-to-client conversion have not been implemented. No commit/push is included in this phase.
