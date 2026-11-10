@@ -1,0 +1,3 @@
+# This project must be served from public/ on its dedicated development port.
+# Block access through XAMPP's shared htdocs document root.
+Require all denied
