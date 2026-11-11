@@ -13,7 +13,12 @@ class Tasks extends BaseController
     }
     public function index():string
     {
-        $s=$this->service();$user=auth()->user();$listing=$s->listing($user,$this->request->getGet());return $this->render('index','Tasks',$listing+$s->lookups()+['projects'=>$s->projectChoices($user,$this->query('project_q'),$listing['project']?:null),'assignees'=>$s->assigneeFilters($user,$this->query('assignee_q')),'projectQuery'=>$this->query('project_q'),'assigneeQuery'=>$this->query('assignee_q')]);
+        $s=$this->service();$user=auth()->user();$listing=$s->listing($user,$this->request->getGet());return $this->render('index','Tasks',$listing+$s->lookups()+['projects'=>$s->projectChoices($user,$this->query('project_q'),$listing['project']?:null),'assignees'=>$s->assigneeFilters($user,$this->query('assignee_q'),$listing['assignee']?:null),'projectQuery'=>$this->query('project_q'),'assigneeQuery'=>$this->query('assignee_q')]);
+    }
+    public function kanban():string
+    {
+        $s=$this->service();$user=auth()->user();$board=$s->board($user,$this->request->getGet());$filters=$board['filters'];
+        return $this->render('kanban','Tasks Kanban',$filters+$s->lookups()+['columns'=>$board['columns'],'taskBoard'=>true,'projects'=>$s->projectChoices($user,$this->query('project_q'),$filters['project']?:null),'assignees'=>$s->assigneeFilters($user,$this->query('assignee_q'),$filters['assignee']?:null),'projectQuery'=>$this->query('project_q'),'assigneeQuery'=>$this->query('assignee_q')]);
     }
     public function show(int $id):string
     {

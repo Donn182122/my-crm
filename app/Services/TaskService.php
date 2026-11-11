@@ -28,7 +28,29 @@ class TaskService
         $q=mb_substr($this->input($input,'q'),0,100);$project=ctype_digit($this->input($input,'project'))?(int)$input['project']:0;if($project){$this->projects->find($user,$project);}
         $status=ctype_digit($this->input($input,'status'))?(int)$input['status']:0;$priority=ctype_digit($this->input($input,'priority'))?(int)$input['priority']:0;$assignee=ctype_digit($this->input($input,'assignee'))?(int)$input['assignee']:0;$archive=$this->input($input,'archive')==='archived'?'archived':'active';
         $query=$this->scoped($user)->where('t.archived_at IS '.($archive==='archived'?'NOT NULL':'NULL'),null,false);foreach(['project_id'=>$project,'status_id'=>$status,'priority_id'=>$priority,'assignee_id'=>$assignee] as $field=>$value){if($value){$query->where('t.'.$field,$value);}}
-        if($q!==''){$query->groupStart()->like('t.title',$q)->orLike('t.code',$q)->groupEnd();}$total=(clone $query)->countAllResults();$pages=max(1,(int)ceil($total/20));$page=min($pages,max(1,min(100000,(int)$this->input($input,'page'))));$rows=$query->select($this->columns())->orderBy('t.title')->orderBy('t.id')->limit(20,($page-1)*20)->get()->getResultArray();return compact('rows','total','pages','page','q','project','status','priority','assignee','archive');
+        if($q!==''){$query->groupStart()->like('t.title',$q)->orLike('t.code',$q)->groupEnd();}$total=(clone $query)->countAllResults();$pages=max(1,(int)ceil($total/20));$page=min($pages,max(1,min(100000,(int)$this->input($input,'page'))));$rows=$query->select($this->columns())->orderBy('t.title')->orderBy('t.code')->orderBy('t.id')->limit(20,($page-1)*20)->get()->getResultArray();return compact('rows','total','pages','page','q','project','status','priority','assignee','archive');
+    }
+    /** Read-only board projection; all status writes still use status(). */
+    public function board(User $user,array $input):array
+    {
+        // Normalize filters and authorize even when no status column matches.
+        $filters=$this->listing($user,array_replace($input,['page'=>'1']));
+        $pages=is_array($input['columns']??null)?$input['columns']:[];
+        $columns=[];$projects=[];$statuses=$this->lookups()['statuses'];
+        $activeIds=array_map('intval',array_column(array_filter($statuses,static fn($status)=>(int)$status['active']===1),'id'));
+        foreach($statuses as $status){
+            if($filters['status']&&(int)$status['id']!==$filters['status']){continue;}
+            $args=$input;$args['status']=(string)$status['id'];$args['page']=is_scalar($pages[$status['id']]??null)?(string)$pages[$status['id']]:'1';
+            $listing=$this->listing($user,$args);
+            // Inactive statuses retain visible records, but never accept drops.
+            if(!(int)$status['active']&&!$listing['total']&&!$filters['status']){continue;}
+            foreach($listing['rows'] as &$task){
+                $projectId=(int)$task['project_id'];$projects[$projectId]??=$this->projects->find($user,$projectId);$project=$projects[$projectId];
+                $task['can_move']=count(array_diff($activeIds,[(int)$task['status_id']]))>0&&$task['archived_at']===null&&!$this->policy->readonlyProject($project)&&$this->policy->allows($user,'status',$project,$task);
+            }unset($task);
+            $columns[]=['status'=>$status,'listing'=>$listing];
+        }
+        return ['columns'=>$columns,'filters'=>$filters];
     }
     public function lookups():array{return ['statuses'=>$this->db->table('task_statuses')->orderBy('position')->orderBy('id')->get()->getResultArray(),'priorities'=>$this->db->table('task_priorities')->orderBy('position')->orderBy('id')->get()->getResultArray()];}
     public function details(User $user,int $id):array
@@ -51,9 +73,10 @@ class TaskService
         $project=$this->projects->find($user,(int)$project['id']);if(!$this->policy->allows($user,'assign',$project)){return [];}
         $memberIds=array_map('intval',array_column($this->db->table('project_members')->select('user_id')->where('project_id',$project['id'])->get()->getResultArray(),'user_id'));$memberIds[]=(int)$project['owner_id'];$q=$this->db->table('users')->select('id,username')->whereIn('id',$memberIds)->where('active',1);$query=mb_substr(trim($query),0,60);if($query!==''){$q->like('username',$query);}return array_values(array_filter($q->orderBy('username')->limit(20)->get()->getResultArray(),fn($r)=>$this->eligible((int)$r['id'],$project)));
     }
-    public function assigneeFilters(User $user,string $query=''):array
+    public function assigneeFilters(User $user,string $query='',?int $selected=null):array
     {
-        $q=$this->scoped($user)->select('assignee.id,assignee.username')->distinct()->where('t.assignee_id IS NOT NULL',null,false);if(trim($query)!==''){$q->like('assignee.username',mb_substr(trim($query),0,60));}return $q->orderBy('assignee.username')->limit(20)->get()->getResultArray();
+        $q=$this->scoped($user)->select('assignee.id,assignee.username')->distinct()->where('t.assignee_id IS NOT NULL',null,false);if(trim($query)!==''){$q->like('assignee.username',mb_substr(trim($query),0,60));}$rows=$q->orderBy('assignee.username')->limit(20)->get()->getResultArray();
+        if($selected&&!in_array($selected,array_map('intval',array_column($rows,'id')),true)){$current=$this->scoped($user)->select('assignee.id,assignee.username')->distinct()->where('t.assignee_id',$selected)->get()->getRowArray();if($current){$rows[]=$current;}}return $rows;
     }
     private function writable(array $project,?array $task=null,string $action='edit'):void
     {

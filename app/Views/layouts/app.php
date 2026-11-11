@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="<?= base_url('assets/css/app.css') ?>">
     <?php if (in_array($active, ['clients', 'leads', 'projects', 'tasks'], true)): ?><link rel="stylesheet" href="<?= base_url('assets/css/clients.css') ?>"><!-- Clients stylesheet --><?php endif ?>
     <?php if ($active === 'leads'): ?><link rel="stylesheet" href="<?= base_url('assets/css/pipeline.css') ?>"><?php endif ?>
+    <?php if (!empty($taskBoard)): ?><link rel="stylesheet" href="<?= base_url('assets/css/pipeline.css') ?>"><link rel="stylesheet" href="<?= base_url('assets/css/tasks-kanban.css') ?>">  <?php endif ?>
 </head>
 <body>
 <a class="skip-link" href="#main-content">Skip to content</a>

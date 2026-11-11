@@ -157,4 +157,62 @@ final class TaskServiceTest extends CIUnitTestCase
         $id=$this->create();$row=$this->tasks->find($this->actor(),$id);$this->connection->table('task_priorities')->where('id',$row['priority_id'])->update(['active'=>0]);
         $this->tasks->save($this->actor(),['description'=>'Retain inactive reference','version'=>'1'],$id);$this->assertSame((int)$row['priority_id'],(int)$this->tasks->find($this->actor(),$id)['priority_id']);
         $this->invalid(fn()=>$this->create(['priority_id'=>(string)$row['priority_id']]));
-    }}
+    }
+    public function testBoardUsesConfiguredStatusesAndBoundedIndependentPagination():void
+    {
+        for($i=0;$i<22;$i++){$this->create(['title'=>'Identical fictional title']);}
+        $this->create(['title'=>'Other stage','status_id'=>'2']);$board=$this->tasks->board($this->actor(),[]);
+        $this->assertCount(5,$board['columns']);$this->assertSame(22,$board['columns'][0]['listing']['total']);$this->assertCount(20,$board['columns'][0]['listing']['rows']);
+        $codes=array_column($board['columns'][0]['listing']['rows'],'code');$sorted=$codes;sort($sorted);$this->assertSame($sorted,$codes);
+        $next=$this->tasks->board($this->actor(),['columns'=>['1'=>'2','2'=>'1']]);$this->assertCount(2,$next['columns'][0]['listing']['rows']);$this->assertSame(1,$next['columns'][1]['listing']['total']);
+        $this->assertSame(array_column($this->tasks->listing($this->actor(),['status'=>'1','page'=>'2'])['rows'],'id'),array_column($next['columns'][0]['listing']['rows'],'id'));
+    }
+    public function testBoardCombinesAllFiltersAndRejectsForeignProjectProbes():void
+    {
+        $this->member(3);$id=$this->create(['title'=>'Find fictional needle','assignee_id'=>'3','priority_id'=>'3','status_id'=>'2']);$this->create();
+        $board=$this->tasks->board($this->actor(),['q'=>'needle','project'=>(string)$this->project,'assignee'=>'3','priority'=>'3','status'=>'2']);$this->assertCount(1,$board['columns']);$this->assertSame($id,(int)$board['columns'][0]['listing']['rows'][0]['id']);
+        $this->assertSame(1,$board['columns'][0]['listing']['total']);$this->denied(fn()=>$this->tasks->board($this->actor(4),['project'=>(string)$this->project]));
+        $this->assertSame([],$this->tasks->board($this->actor(),['status'=>'99999'])['columns']);
+    }
+    public function testBoardCountsAndControlsRespectLiveMembershipAndCapabilities():void
+    {
+        $this->member(3);$id=$this->create(['assignee_id'=>'3']);$this->create();$board=$this->tasks->board($this->actor(3),[]);$this->assertSame(1,$board['columns'][0]['listing']['total']);$this->assertTrue($board['columns'][0]['listing']['rows'][0]['can_move']);
+        $reader=$this->actor(3,['projects.view','tasks.view','tasks.edit']);$this->assertFalse($this->tasks->board($reader,[])['columns'][0]['listing']['rows'][0]['can_move']);$this->denied(fn()=>$this->tasks->status($reader,$id,'2','1'));
+        $this->connection->table('project_members')->where(['project_id'=>$this->project,'user_id'=>3])->delete();foreach($this->tasks->board($this->actor(3),[])['columns'] as $column){$this->assertSame(0,$column['listing']['total']);}
+        $this->denied(fn()=>$this->tasks->board($this->actor(3,['tasks.view']),[]));
+    }
+    public function testBoardArchivedTasksAndArchivedOrCompletedProjectsAreReadOnly():void
+    {
+        $id=$this->create();$this->tasks->archive($this->actor(),$id,true,'1');$archived=$this->tasks->board($this->actor(),['archive'=>'archived']);$this->assertFalse($archived['columns'][0]['listing']['rows'][0]['can_move']);
+        $this->tasks->archive($this->actor(),$id,false,'2');$pv=(string)$this->projects->find($this->actor(),$this->project)['version'];$this->projects->archive($this->actor(),$this->project,true,$pv);
+        $this->assertFalse($this->tasks->board($this->actor(),[])['columns'][0]['listing']['rows'][0]['can_move']);$pv=(string)$this->projects->find($this->actor(),$this->project)['version'];$this->projects->archive($this->actor(),$this->project,false,$pv);
+        $pv=(string)$this->projects->find($this->actor(),$this->project)['version'];$this->projects->save($this->actor(),['name'=>'Fictional project','status_id'=>'4','version'=>$pv],$this->project);$this->assertFalse($this->tasks->board($this->actor(),[])['columns'][0]['listing']['rows'][0]['can_move']);
+    }
+    public function testInactiveBoardColumnsPreserveTasksWithoutAcceptingNewTransitions():void
+    {
+        $id=$this->create();$other=$this->create(['status_id'=>'2']);$this->connection->table('task_statuses')->whereIn('id',[1,3])->update(['active'=>0]);$board=$this->tasks->board($this->actor(),[]);$this->assertCount(4,$board['columns']);
+        $this->assertSame('todo',$board['columns'][0]['status']['slug']);$this->assertSame(1,$board['columns'][0]['listing']['total']);$this->assertTrue($board['columns'][0]['listing']['rows'][0]['can_move']);$this->invalid(fn()=>$this->tasks->status($this->actor(),$other,'1','1'));
+        $this->tasks->status($this->actor(),$id,'2','1');$this->assertCount(3,$this->tasks->board($this->actor(),[])['columns']);$this->assertCount(1,$this->tasks->board($this->actor(),['status'=>'3'])['columns']);
+    }
+    public function testBoardHandlesMalformedPagesWithoutMutatingDataOrExposingClientFields():void
+    {
+        $id=$this->create();$before=$this->tasks->details($this->actor(),$id)['history'];foreach([['columns'=>'bad'],['columns'=>['1'=>['bad']]],['columns'=>['1'=>'-999']],['q'=>['bad'],'status'=>['bad']]] as $input){$board=$this->tasks->board($this->actor(),$input);$this->assertSame(1,$board['columns'][0]['listing']['page']);}
+        $row=$this->tasks->board($this->actor(),[])['columns'][0]['listing']['rows'][0];$this->assertArrayNotHasKey('client_id',$row);$this->assertArrayNotHasKey('email',$row);$this->assertSame($before,$this->tasks->details($this->actor(),$id)['history']);
+    }
+    public function testBoardAndListReflectCommittedStatusAndRejectStaleMoves():void
+    {
+        $id=$this->create();$this->tasks->status($this->actor(),$id,'4','1');$this->invalid(fn()=>$this->tasks->status($this->actor(),$id,'2','1'),409);
+        $board=$this->tasks->board($this->actor(),['status'=>'4']);$this->assertSame($id,(int)$board['columns'][0]['listing']['rows'][0]['id']);$this->assertNotNull($board['columns'][0]['listing']['rows'][0]['completed_at']);$this->assertSame(1,$this->tasks->listing($this->actor(),['status'=>'4'])['total']);$this->assertCount(2,$this->tasks->details($this->actor(),$id)['history']);
+    }
+    public function testBoardDoesNotOfferMovementWithoutAnAlternativeActiveDestination():void
+    {
+        $this->create();$this->connection->table('task_statuses')->update(['active'=>0]);$board=$this->tasks->board($this->actor(),[]);$this->assertCount(1,$board['columns']);$this->assertFalse($board['columns'][0]['listing']['rows'][0]['can_move']);
+        $this->connection->table('task_statuses')->where('id',1)->update(['active'=>1]);$this->assertFalse($this->tasks->board($this->actor(),[])['columns'][0]['listing']['rows'][0]['can_move']);
+        $this->connection->table('task_statuses')->where('id',2)->update(['active'=>1]);$this->assertTrue($this->tasks->board($this->actor(),[])['columns'][0]['listing']['rows'][0]['can_move']);
+    }
+    public function testSelectedAssigneeFilterRemainsVisibleWithoutLeakingForeignUsers():void
+    {
+        $this->member(3);$this->create(['assignee_id'=>'3']);$choices=$this->tasks->assigneeFilters($this->actor(),'No matching username',3);$this->assertCount(1,$choices);$this->assertSame(3,(int)$choices[0]['id']);
+        $this->assertSame([],$this->tasks->assigneeFilters($this->actor(),'No matching username',4));
+    }
+}
