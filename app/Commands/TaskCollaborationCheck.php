@@ -1,0 +1,93 @@
+<?php
+
+declare(strict_types=1);
+namespace App\Commands;
+use CodeIgniter\CLI\{BaseCommand,CLI};
+use CodeIgniter\Shield\Entities\User;
+use App\Services\{TaskCollaborationService,TaskService,ProjectService,ClientService,TaskInputException,DatabaseUnitOfWork};
+
+class TaskCollaborationCheck extends BaseCommand
+{
+    protected $group='Verification';protected $name='tasks:collaboration-check';protected $description='Verify subtasks, checklist/comment security, HTTP and concurrent collaboration changes.';
+    private $curl;private int $checks=0;
+    private function check(bool $value,string $label):void{if(!$value){throw new \RuntimeException('FAIL: '.$label);}$this->checks++;CLI::write('PASS: '.$label,'green');}
+    private function authenticationDigest($db):string
+    {
+        $rows=$db->table('auth_identities')->orderBy('id')->get()->getResultArray();
+        // Shield legitimately touches these fields when a permanent user logs in.
+        foreach($rows as &$row){unset($row['last_used_at'],$row['updated_at']);}unset($row);
+        return hash('sha256',json_encode($rows,JSON_THROW_ON_ERROR));
+    }
+    private function http(string $method,string $path,array $data=[],bool $ajax=false):array
+    {
+        curl_setopt_array($this->curl,[CURLOPT_URL=>'http://localhost:8081/'.$path,CURLOPT_HTTPHEADER=>$ajax?['X-Requested-With: XMLHttpRequest','Accept: application/json']:[]]);curl_setopt($this->curl,CURLOPT_POSTFIELDS,null);curl_setopt($this->curl,CURLOPT_HTTPGET,true);
+        if($method==='POST'){curl_setopt($this->curl,CURLOPT_POST,true);curl_setopt($this->curl,CURLOPT_POSTFIELDS,http_build_query($data));}$body=curl_exec($this->curl);if($body===false){throw new \RuntimeException('HTTP verification request failed.');}return [(int)curl_getinfo($this->curl,CURLINFO_HTTP_CODE),$body];
+    }
+    private function post(string $path,array $data=[],bool $ajax=false):array
+    {
+        [, $body]=$this->http('GET','tasks');if(!preg_match('/name="my_crm_csrf_token" value="([^"]+)"/',$body,$m)){throw new \RuntimeException('Verification CSRF form missing.');}
+        return $this->http('POST',$path,$data+['my_crm_csrf_token'=>html_entity_decode($m[1])],$ajax);
+    }
+    private function login(array $credentials):void
+    {
+        curl_setopt($this->curl,CURLOPT_COOKIELIST,'ALL');
+        for($attempt=0;$attempt<15;$attempt++){[$status,$body]=$this->http('GET','login');if($status===429){sleep(7);continue;}
+            if(!preg_match('/name="my_crm_csrf_token" value="([^"]+)"/',$body,$m)){throw new \RuntimeException('Login form unavailable.');}
+            [$status]=$this->http('POST','login',['email'=>$credentials[0],'password'=>$credentials[1],'my_crm_csrf_token'=>html_entity_decode($m[1])]);if($status===429){sleep(7);continue;}$this->check(in_array($status,[302,303],true),'Generated fixture login');return;
+        }throw new \RuntimeException('Login rate limit persisted; retry later.');
+    }
+    private function worker(array $params):void
+    {
+        [$actorId,$taskId,$version,$start,$mode,$target]=array_pad($params,6,'');foreach([$actorId,$taskId,$version,$target] as $value){if(!ctype_digit($value)){throw new \RuntimeException('Invalid worker parameters.');}}
+        $db=db_connect();$actor=auth()->getProvider()->findById((int)$actorId);$task=$db->table('tasks')->where('id',(int)$taskId)->get()->getRowArray();if($db->getDatabase()!=='my_crm_db'||!$actor||!str_starts_with($actor->username,'collabcheck')||!$task||(int)$task['created_by']!==(int)$actorId||!in_array($mode,['comment','order'],true)||abs((float)$start-microtime(true))>30){throw new \RuntimeException('Collaboration fixture guard failed.');}
+        while(microtime(true)<(float)$start){usleep(10000);}$began=microtime(true);
+        try{DatabaseUnitOfWork::run($db,function()use($db,$actor,$taskId,$task,$version,$mode,$target){DatabaseUnitOfWork::lock($db,'projects',(int)$task['project_id']);usleep(600000);$service=new TaskCollaborationService($db);if($mode==='comment'){$service->comment($actor,(int)$taskId,['body'=>'Concurrent fictional edit','version'=>$version],(int)$target);}else{$service->checklist($actor,(int)$taskId,['direction'=>'up','version'=>$version],(int)$target,'move');}});$status=200;}catch(\App\Services\TaskInputException $e){$status=$e->status;}
+        CLI::write(json_encode(['status'=>$status,'began'=>$began,'ended'=>microtime(true)],JSON_THROW_ON_ERROR));
+    }
+    private function race(User $actor,int $task,string $version,string $mode,int $target):void
+    {
+        $processes=[];$results=[];$failed=false;$start=(string)(microtime(true)+2);
+        for($i=0;$i<2;$i++){$pipes=[];$process=proc_open([PHP_BINARY,ROOTPATH.'spark','tasks:collaboration-check','worker',(string)$actor->id,(string)$task,$version,$start,$mode,(string)$target],[0=>['pipe','r'],1=>['pipe','w'],2=>['pipe','w']],$pipes,ROOTPATH);if(!is_resource($process)){$failed=true;break;}fclose($pipes[0]);$processes[]=[$process,$pipes];}
+        foreach($processes as [$process,$pipes]){$output=stream_get_contents($pipes[1]);stream_get_contents($pipes[2]);fclose($pipes[1]);fclose($pipes[2]);$exit=proc_close($process);if($exit!==0||!preg_match('/\{"status":.*\}/',$output,$match)){$failed=true;continue;}$results[]=json_decode($match[0],true);}
+        if($failed||count($results)!==2){throw new \RuntimeException('Collaboration worker failed; all launched workers finished.');}$this->check(max($results[0]['began'],$results[1]['began'])<min($results[0]['ended'],$results[1]['ended']),'Separate MariaDB '.$mode.' workers overlap');$statuses=array_column($results,'status');sort($statuses);$this->check($statuses===[200,409],'Concurrent '.$mode.' changes yield one commit and one stale conflict');
+    }    public function run(array $params):void
+    {
+        if(($params[0]??'')==='worker'){$this->worker(array_slice($params,1));return;}
+        $db=db_connect();$this->check($db->getDatabase()==='my_crm_db','Dedicated independent database');$s=new TaskService();$c=new TaskCollaborationService();$projects=new ProjectService();$clients=new ClientService();$provider=auth()->getProvider();$ids=[];$emails=[];$tag='collabcheck'.bin2hex(random_bytes(4));$before=$this->authenticationDigest($db);
+        $this->curl=curl_init();curl_setopt_array($this->curl,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_COOKIEFILE=>'',CURLOPT_FOLLOWLOCATION=>false,CURLOPT_TIMEOUT=>15]);
+        try{
+            foreach(['tasks','tasks/new?parent=99999','tasks/99999'] as $path){[$status]=$this->http('GET',$path);$this->check($status===302,'Guests cannot access collaboration context');}
+            foreach(['owner','member','outsider','reader','admin'] as $role){$email=$tag.'.'.$role.'@example.invalid';$password=bin2hex(random_bytes(20)).'aA9!';$provider->save(new User(['username'=>$tag.$role,'email'=>$email,'password'=>$password]));$uid=(int)$provider->getInsertID();$ids[]=$uid;$emails[]=$email;$actor=$provider->findById($uid);$actor->activate();if($role==='reader'){$actor->addPermission('foundation.access','projects.view','tasks.view');}else{$actor->addGroup($role==='admin'?'admin':'user');}$actors[$role]=$actor;$credentials[$role]=[$email,$password];}
+            $owner=$actors['owner'];$client=$clients->save($owner,['type'=>'company','company_name'=>$tag.' private client','status_id'=>'1']);$project=$projects->save($owner,['name'=>$tag.' project','client_id'=>(string)$client,'status_id'=>'1']);$pv=fn()=>(string)$projects->find($owner,$project)['version'];foreach(['member','reader'] as $role){$projects->addMember($owner,$project,['user_id'=>(string)$actors[$role]->id,'role'=>'member','version'=>$pv()]);}
+            $root=$s->save($owner,['project_id'=>(string)$project,'title'=>$tag.' root','assignee_id'=>(string)$actors['member']->id]);$version=fn()=>(string)$db->table('tasks')->where('id',$root)->get()->getRow('version');$other=$s->save($owner,['project_id'=>(string)$project,'title'=>$tag.' other']);$readerTask=$s->save($owner,['project_id'=>(string)$project,'title'=>$tag.' reader','assignee_id'=>(string)$actors['reader']->id]);
+            $this->login($credentials['owner']);[$status,$body]=$this->http('GET','tasks/new?parent='.$root);$this->check($status===200&&str_contains($body,'name="parent_id"')&&str_contains($body,'Create subtask'),'Subtask form is scoped and explicit');
+            [$status]=$this->post('tasks',['project_id'=>(string)$project,'parent_id'=>(string)$root,'title'=>$tag.' child','assignee_id'=>(string)$actors['member']->id]);$this->check(in_array($status,[302,303],true),'Create subtask through existing Task persistence');$child=(int)$db->table('tasks')->where('title',$tag.' child')->get()->getRow('id');$childVersion=fn()=>(string)$db->table('tasks')->where('id',$child)->get()->getRow('version');
+            [$status]=$this->post('tasks',['project_id'=>(string)$project,'parent_id'=>(string)$child,'title'=>'Nested invalid'],true);$this->check($status===422,'Second-level subtasks rejected');[$status]=$this->post('tasks/'.$child,['parent_id'=>(string)$child,'version'=>$childVersion()],true);$this->check($status===422,'Self-parenting/reparenting rejected');
+            $secondProject=$projects->save($owner,['name'=>$tag.' other project','client_id'=>(string)$client,'status_id'=>'1']);[$status]=$this->post('tasks',['project_id'=>(string)$secondProject,'parent_id'=>(string)$root,'title'=>'Cross project invalid'],true);$this->check($status===422,'Cross-project subtask rejected');
+            [$status]=$this->post('tasks/'.$child,['title'=>$tag.' edited child','priority_id'=>'3','due_date'=>'2026-12-01','version'=>$childVersion()]);$this->check(in_array($status,[302,303],true),'Subtask information priority and date edit');[$status]=$this->post('tasks/'.$child.'/status',['status_id'=>'4','version'=>$childVersion()],true);$this->check($status===200&&$s->find($owner,$child)['completed_at']!==null&&$s->find($owner,$root)['completed_at']===null,'Child completion does not complete parent');
+            [$status,$body]=$this->http('GET','tasks/'.$root);$this->check($status===200&&str_contains($body,$tag.' edited child')&&str_contains($body,'id="task-checklist"')&&str_contains($body,'id="task-comments"'),'Task profile includes collaboration sections');
+            foreach(['A','B'] as $label){[$status]=$this->post('tasks/'.$root.'/checklist',['label'=>$label,'version'=>$version()]);$this->check(in_array($status,[302,303],true),'Add checklist item');}$items=$db->table('task_checklist_items')->where('task_id',$root)->orderBy('position')->get()->getResultArray();$a=(int)$items[0]['id'];$b=(int)$items[1]['id'];
+            [$status]=$this->post('tasks/'.$root.'/checklist/'.$a,['label'=>'Edited A','version'=>$version()]);$this->check(in_array($status,[302,303],true),'Edit checklist item');[$status]=$this->post('tasks/'.$root.'/checklist/'.$a.'/toggle',['completed'=>'1','version'=>$version()]);$this->check(in_array($status,[302,303],true)&&$c->details($owner,$root)['checked']===1,'Checklist progress reflects completion');
+            $old=$version();[$status]=$this->post('tasks/'.$root.'/checklist/'.$b.'/move',['direction'=>'up','version'=>$old]);$this->check(in_array($status,[302,303],true)&&$c->details($owner,$root)['items'][0]['label']==='B','Checklist ordering persists');[$status]=$this->post('tasks/'.$root.'/checklist/'.$a.'/move',['direction'=>'up','version'=>$old],true);$this->check($status===409,'Stale reorder returns 409');
+            [$status]=$this->post('tasks/'.$root.'/checklist',['label'=>['bad'],'version'=>$version()],true);$this->check($status===422,'Nested checklist input rejected');
+            $payload='<script>fictionalXss()</script>';[$status]=$this->post('tasks/'.$root.'/comments',['body'=>$payload,'author_id'=>(string)$actors['admin']->id,'version'=>$version()]);$this->check(in_array($status,[302,303],true),'Add plain-text comment');$comment=(int)$db->table('task_comments')->where(['task_id'=>$root,'body'=>$payload])->get()->getRow('id');
+            [$status,$body]=$this->http('GET','tasks/'.$root);$this->check($status===200&&str_contains($body,'&lt;script&gt;fictionalXss()&lt;/script&gt;')&&!str_contains($body,$payload),'Stored XSS is escaped in rendered comment and edit form');$this->check((int)$db->table('task_comments')->where('id',$comment)->get()->getRow('author_id')===(int)$owner->id,'Comment author is server derived');
+            [$status]=$this->post('tasks/'.$root.'/comments/'.$comment,['body'=>'Owner edited comment','version'=>$version()]);$this->check(in_array($status,[302,303],true),'Author edits own comment');$old=$version();$s->status($owner,$root,'2',$old);[$status]=$this->post('tasks/'.$root.'/comments/'.$comment,['body'=>'Stale comment draft','version'=>$old]);$this->check($status===409,'Stale native comment edit returns 409');[$status,$body]=$this->post('tasks/'.$root.'/comments',['body'=>'','version'=>$version()]);$this->check($status===422&&str_contains($body,'Reload task'),'Native validation errors provide reload guidance');
+            foreach(['/checklist','/checklist/'.$a,'/checklist/'.$a.'/toggle','/checklist/'.$a.'/move','/checklist/'.$a.'/archive','/comments','/comments/'.$comment,'/comments/'.$comment.'/hide'] as $suffix){[$status]=$this->http('POST','tasks/'.$root.$suffix,['version'=>$version()]);$this->check($status===403,'CSRF protects collaboration mutation '.$suffix);}
+            [$status]=$this->post('tasks/'.$other.'/checklist/'.$a,['label'=>'Cross-task attempt','version'=>'1'],true);$this->check($status===404,'Checklist parent mismatch rejected');[$status]=$this->post('tasks/'.$other.'/comments/'.$comment,['body'=>'Cross-task attempt','version'=>'1'],true);$this->check($status===404,'Comment parent mismatch rejected');
+            $privateRoot=$s->save($owner,['project_id'=>(string)$project,'title'=>$tag.' restricted parent']);$privateChild=$s->save($owner,['project_id'=>(string)$project,'parent_id'=>(string)$privateRoot,'title'=>$tag.' assigned child','assignee_id'=>(string)$actors['member']->id]);
+            $this->login($credentials['member']);[$status,$body]=$this->http('GET','tasks/'.$privateChild);$this->check($status===200&&!str_contains($body,$tag.' restricted parent')&&str_contains($body,'Parent task details require independent access'),'Child assignment does not reveal restricted parent');[$status]=$this->post('tasks',['project_id'=>(string)$project,'parent_id'=>(string)$root,'title'=>'Member cannot create child'],true);$this->check($status===404,'Assigned member cannot administer subtask creation');
+            [$status]=$this->post('tasks/'.$root.'/comments',['body'=>'Member discussion','version'=>$version()]);$this->check(in_array($status,[302,303],true),'Assigned member adds comment');$memberComment=(int)$db->table('task_comments')->where(['task_id'=>$root,'body'=>'Member discussion'])->get()->getRow('id');[$status]=$this->post('tasks/'.$root.'/comments/'.$comment,['body'=>'Rewrite owner','version'=>$version()],true);$this->check($status===404,'Member cannot edit another author');[$status]=$this->post('tasks/'.$root.'/comments/'.$comment.'/hide',['version'=>$version()],true);$this->check($status===404,'Member cannot hide another author');
+            $projects->removeMember($owner,$project,(int)$actors['member']->id,$pv());[$status]=$this->http('GET','tasks/'.$child);$this->check($status===404,'Membership revocation immediately hides subtask');[$status]=$this->post('tasks/'.$root.'/comments',['body'=>'Revoked discussion','version'=>$version()],true);$this->check($status===404,'Revoked member cannot submit comment');
+            $this->login($credentials['outsider']);foreach(['/comments','/comments/'.$comment,'/checklist','/checklist/'.$a] as $suffix){[$status]=$this->post('tasks/'.$root.$suffix,['body'=>'Foreign','label'=>'Foreign','version'=>$version()],true);$this->check($status===404,'Foreign direct collaboration request rejected');}[$status]=$this->http('GET','tasks/'.$root.'/comments/'.$comment);$this->check($status===404,'No direct comment body URL is exposed');
+            $this->login($credentials['reader']);[$status]=$this->post('tasks/'.$readerTask.'/comments',['body'=>'No grant','version'=>'1'],true);$this->check($status===404,'Missing comment capability rejected');
+            $this->login($credentials['admin']);[$status]=$this->post('tasks/'.$root.'/comments/'.$memberComment,['body'=>'Moderator cannot rewrite','version'=>$version()],true);$this->check($status===404,'Moderator cannot rewrite another author');[$status]=$this->post('tasks/'.$root.'/comments/'.$memberComment.'/hide',['version'=>$version()]);$this->check(in_array($status,[302,303],true),'Authorized manager moderator hides another comment');[$status,$body]=$this->http('GET','tasks/'.$root);$this->check($status===200&&!str_contains($body,'Member discussion'),'Hidden body is absent from profile and history');
+            $this->login($credentials['owner']);$s->archive($owner,$root,true,$version());[$status]=$this->post('tasks/'.$child.'/status',['status_id'=>'1','version'=>$childVersion()],true);$this->check($status===422,'Archived task parent blocks child status changes');[$status]=$this->post('tasks/'.$child.'/comments',['body'=>'Archived parent','version'=>$childVersion()],true);$this->check($status===422,'Archived task parent blocks child collaboration');$s->archive($owner,$root,false,$version());
+            $this->race($owner,$root,$version(),'comment',$comment);$this->race($owner,$root,$version(),'order',$a);$this->check($db->table('task_history')->where('task_id',$root)->countAllResults()===(int)$version(),'Every committed collaboration version has exactly one history event');
+            [$status]=$this->post('tasks/'.$root.'/checklist/'.$a.'/archive',['version'=>$version()]);$this->check(in_array($status,[302,303],true),'Checklist item archives without hard deletion');
+        }finally{
+            if($ids){$db->table('tasks')->whereIn('created_by',$ids)->where('parent_id IS NOT NULL',null,false)->delete();$db->table('tasks')->whereIn('created_by',$ids)->delete();$db->table('projects')->whereIn('created_by',$ids)->delete();$db->table('clients')->whereIn('owner_id',$ids)->delete();}foreach($ids as $uid){$db->table('auth_logins')->where('user_id',$uid)->delete();$provider->delete($uid,true);}foreach($emails as $email){$db->table('auth_logins')->where('identifier',$email)->delete();}curl_close($this->curl);unset($credentials);
+        }
+        $this->check(hash_equals($before,$this->authenticationDigest($db)),'Permanent authentication unchanged');CLI::write('Task collaboration HTTP/concurrency checks passed: '.$this->checks.'. Fictional fixtures removed.','green');
+    }
+}
