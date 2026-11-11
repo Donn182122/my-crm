@@ -16,6 +16,13 @@ class AuthGroups extends ShieldAuthGroups
     public array $permissions = [
         'foundation.access' => 'Access the authenticated foundation.',
         'admin.access' => 'Access the administrator verification page.',
+        'projects.view' => 'View explicitly authorized projects.',
+        'projects.create' => 'Create projects for authorized clients.',
+        'projects.edit' => 'Edit owned projects or assigned manager projects.',
+        'projects.archive' => 'Archive and restore owned projects.',
+        'projects.members' => 'Manage project memberships within project role limits.',
+        'projects.assign' => 'Assign project ownership as an administrator.',
+        'projects.manageall' => 'Administer all projects.',
         'leads.convert' => 'Convert authorized Qualified leads to authorized clients.',
         'leads.view' => 'View assigned leads.',
         'leads.create' => 'Create assigned leads.',
@@ -32,7 +39,7 @@ class AuthGroups extends ShieldAuthGroups
         'clients.lookups' => 'Manage shared client groups and statuses.',
     ];
     public array $matrix = [
-        'admin' => ['leads.convert', 'leads.view', 'leads.create', 'leads.edit', 'leads.archive', 'leads.manageall', 'leads.assign', 'leads.reopen', 'foundation.access', 'admin.access', 'clients.view', 'clients.create', 'clients.edit', 'clients.archive', 'clients.manageall', 'clients.lookups'],
-        'user' => ['leads.convert', 'leads.view', 'leads.create', 'leads.edit', 'leads.archive', 'foundation.access', 'clients.view', 'clients.create', 'clients.edit', 'clients.archive'],
+        'admin' => ['projects.view','projects.create','projects.edit','projects.archive','projects.members','projects.assign','projects.manageall','leads.convert', 'leads.view', 'leads.create', 'leads.edit', 'leads.archive', 'leads.manageall', 'leads.assign', 'leads.reopen', 'foundation.access', 'admin.access', 'clients.view', 'clients.create', 'clients.edit', 'clients.archive', 'clients.manageall', 'clients.lookups'],
+        'user' => ['projects.view','projects.create','projects.edit','projects.archive','projects.members','leads.convert', 'leads.view', 'leads.create', 'leads.edit', 'leads.archive', 'foundation.access', 'clients.view', 'clients.create', 'clients.edit', 'clients.archive'],
     ];
 }

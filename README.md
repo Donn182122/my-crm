@@ -95,3 +95,13 @@ Apply the reviewed additive CreateLeadConversions migration with `C:\xampp\php\p
 Run `C:\xampp\php\php.exe spark pipeline:check` with the development server running, sequentially after the other verification commands. It checks actual HTTP security and runs simultaneous operations on separate MariaDB connections using generated fixture records, then removes those records. The private worker mode is for guarded generated verification jobs only. `test.ps1` includes disposable SQLite failure-injection/rollback tests and module regressions. Keep `.tools/`, sessions, logs and `.env` ignored.
 
 See [Phase 4B-2 verification](docs/phase-4b-2-verification.md) for changed files, migration details, security behavior, test evidence and limits. Phase 4B-2 is delivered as a reviewed local feature-branch checkpoint. See Git history for its commit; nothing is pushed or merged by this delivery.
+
+## Phase 5A: Projects foundation
+
+Projects are available at http://localhost:8081/projects. Creation requires an authorized active client. Projects support statuses, dates, owner assignment, manager/member relationships, scoped search/filtering/pagination, archive/restore and atomic versioned activity history. Every write is CSRF protected; stale forms return 409. Project membership does not grant access to the client's private information. The Client profile includes only independently authorized projects.
+
+Apply the reviewed additive migration with `C:\xampp\php\php.exe spark migrate`, then run `C:\xampp\php\php.exe spark db:seed ProjectReferenceSeeder`. Do not change the reference CRM database. The five initial statuses are seeded idempotently; existing records and authentication credentials are preserved.
+
+Owners and administrators manage project administration. Assigned managers can edit unarchived project details and manage regular members; members are read-only in this foundation. Shield action permissions remain mandatory for every role. Owner changes require administrator assignment privileges; client changes require separate Clients authorization. Archived projects are visible only to their authorized owner/administrator. Client archiving does not archive projects.
+
+Run `C:\xampp\php\php.exe spark projects:check` sequentially with the other HTTP verifiers; it includes actual overlapping MariaDB writes and cleans its fictional fixtures. See [Phase 5A verification](docs/phase-5a-projects-verification.md) and [Phase 5B Tasks proposal](docs/phase-5b-tasks-plan.md). Tasks, billing, files and time tracking remain unimplemented. Phase 5A is a reviewed local feature-branch checkpoint; no push or merge is performed.

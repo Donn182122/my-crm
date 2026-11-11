@@ -15,7 +15,7 @@ final class DatabaseUnitOfWork
     }
     public static function lock(BaseConnection $db,string $table,int $id):void
     {
-        if(!in_array($table,['clients','leads'],true)||$db->transDepth<1){throw new \LogicException('A supported parent lock requires an active transaction.');}
+        if(!in_array($table,['clients','leads','projects'],true)||$db->transDepth<1){throw new \LogicException('A supported parent lock requires an active transaction.');}
         $name=$db->protectIdentifiers($db->prefixTable($table));$db->query('SELECT id FROM '.$name.' WHERE id = ?'.($db->DBDriver==='MySQLi'?' FOR UPDATE':''),[$id])->getRowArray();
     }
 }

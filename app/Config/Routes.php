@@ -57,3 +57,10 @@ $routes->group('leads', ['filter'=>['session','permission:leads.view']], static 
     $routes->post('(:num)/(contacts|addresses)/(:num)', 'Leads::childUpdate/$1/$2/$3');
     $routes->post('(:num)/(contacts|addresses)/(:num)/remove', 'Leads::childRemove/$1/$2/$3');
 });
+// Projects: independent record policies and global CSRF protect all writes.
+$routes->group('projects',['filter'=>['session','permission:projects.view']],static function($routes){
+    $routes->get('','Projects::index');$routes->get('new','Projects::create');$routes->post('','Projects::store');
+    $routes->get('(:num)','Projects::show/$1');$routes->get('(:num)/edit','Projects::edit/$1');$routes->post('(:num)','Projects::update/$1');
+    $routes->post('(:num)/archive','Projects::archive/$1');$routes->post('(:num)/restore','Projects::restore/$1');
+    $routes->post('(:num)/members','Projects::addMember/$1');$routes->post('(:num)/members/(:num)/remove','Projects::removeMember/$1/$2');
+});

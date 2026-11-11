@@ -15,7 +15,7 @@ class Clients extends BaseController
             'navigation'=>$nav->sections($user),'destinations'=>$nav->destinations($user),'policy'=>new ClientPolicy(),'errors'=>[]]);
     }
     public function index(): string { return $this->render('index','Clients',$this->clients()->listing(auth()->user(),$this->request->getGet())+$this->clients()->lookups()); }
-    public function show(int $id): string { return $this->render('show','Client profile',$this->clients()->details(auth()->user(),$id)); }
+    public function show(int $id): string { $data=$this->clients()->details(auth()->user(),$id);$data['projectListing']=auth()->user()->can('projects.view')?(new \App\Services\ProjectService())->listing(auth()->user(),['client'=>(string)$id]):null;return $this->render('show','Client profile',$data); }
     public function create(): string
     {
         (new ClientPolicy())->require(auth()->user(),'create');

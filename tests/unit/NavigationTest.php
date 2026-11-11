@@ -26,7 +26,9 @@ final class NavigationTest extends CIUnitTestCase
     {
         $service = new NavigationService();
         $this->assertNull($service->find('settings', $this->user(false)));
-        $this->assertNotNull($service->find('projects', $this->user(false)));
+        $this->assertNull($service->find('projects', $this->user(false)));
+        $this->assertSame(site_url('projects'), $service->find('projects', $this->user(true))['url']);
+        $this->assertFalse($service->find('projects', $this->user(true))['comingSoon']);
     }
 
     public function testUnknownAndUnsafeModuleSlugsCannotResolve(): void
