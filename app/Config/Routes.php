@@ -34,10 +34,16 @@ $routes->group('clients', ['filter'=>['session','permission:clients.view']], sta
     $routes->post('(:num)/(contacts|addresses)/(:num)/remove', 'Clients::childRemove/$1/$2/$3');
 });
 
-// Leads foundation: no Kanban or conversion endpoints in this phase.
+// Leads and pipeline: server policies independently protect every operation.
 $routes->group('leads', ['filter'=>['session','permission:leads.view']], static function ($routes) {
     $routes->get('', 'Leads::index');
     $routes->get('new', 'Leads::create');
+    $routes->get('kanban', 'LeadPipeline::board');
+    $routes->post('(:num)/stage', 'LeadPipeline::stage/$1');
+    $routes->get('(:num)/convert', 'LeadPipeline::start/$1');
+    $routes->post('(:num)/convert/preview', 'LeadPipeline::preview/$1');
+    $routes->post('(:num)/convert/confirm', 'LeadPipeline::confirm/$1');
+    $routes->get('(:num)/conversion', 'LeadPipeline::result/$1');
     $routes->post('', 'Leads::store');
     $routes->get('(:num)', 'Leads::show/$1');
     $routes->get('(:num)/edit', 'Leads::edit/$1');

@@ -20,9 +20,8 @@ class LeadService
     }
     private function write(callable $fn):mixed
     {
-        $this->db->transException(true)->transBegin();
-        try{$result=$fn();if(!$this->db->transStatus()){throw new \RuntimeException('Lead transaction failed.');}$this->db->transCommit();return $result;}
-        catch(\Throwable $e){$this->db->transRollback();if(str_contains($e->getMessage(),'Duplicate entry')||str_contains($e->getMessage(),'UNIQUE constraint')){throw new LeadInputException(['duplicate'=>'This lead or contact email already exists. No changes were saved.']);}throw $e;}
+        try{return DatabaseUnitOfWork::run($this->db,$fn);}
+        catch(\Throwable $e){if(str_contains($e->getMessage(),'Duplicate entry')||str_contains($e->getMessage(),'UNIQUE constraint')){throw new LeadInputException(['duplicate'=>'This lead or contact email already exists. No changes were saved.']);}throw $e;}
     }
     private function scoped(User $user)
     {
@@ -32,7 +31,7 @@ class LeadService
     {
         return $this->scoped($user)->join('lead_sources src','src.id=l.source_id')->join('lead_statuses s','s.id=l.status_id')->join('users owner','owner.id=l.owner_id')->join('users creator','creator.id=l.created_by');
     }
-    private function columns():string{return 'l.*, src.name AS source_name, s.name AS status_name, s.outcome, s.reserved, owner.username AS owner_name, creator.username AS creator_name';}
+    private function columns():string{return 'l.*, src.name AS source_name, s.name AS status_name, s.slug AS status_slug, s.outcome, s.reserved, owner.username AS owner_name, creator.username AS creator_name';}
     public function find(User $user,int $id):array
     {
         $lead=$this->joined($user)->select($this->columns())->where('l.id',$id)->get()->getRowArray();if(!$lead){throw PageNotFoundException::forPageNotFound();}return $lead;
@@ -146,5 +145,35 @@ class LeadService
     {
         $lead=$this->editable($user,$leadId);$this->child($user,$leadId,$kind,$id);
         $this->mutate($user,$lead,$version,[],$kind.'_removed',ucfirst($kind).' removed.',function()use($kind,$id,$leadId){$this->db->table($this->childTable($kind))->where(['id'=>$id,'lead_id'=>$leadId])->delete();},['entry_id'=>$id]);
+    }
+    public function board(User $user,array $input):array
+    {
+        $columns=[];$pages=$input['columns']??[];if(!is_array($pages)){$pages=[];}
+        foreach($this->lookups()['statuses'] as $status){
+            $selected=is_string($input['status']??null)&&ctype_digit($input['status'])?(int)$input['status']:0;
+            if($selected&&$selected!==(int)$status['id']){continue;}
+            $args=$input;$args['status']=(string)$status['id'];$args['page']=is_scalar($pages[$status['id']]??null)?(string)$pages[$status['id']]:'1';
+            $columns[]=['status'=>$status,'listing'=>$this->listing($user,$args)];
+        }
+        return $columns;
+    }
+    public function transition(User $user,int $id,mixed $version,mixed $statusId):int
+    {
+        $lead=$this->editable($user,$id);
+        if(!is_string($statusId)||!ctype_digit($statusId)){throw new LeadInputException(['status'=>'Choose an available pipeline status.']);}
+        $status=$this->db->table('lead_statuses')->where('id',(int)$statusId)->get()->getRowArray();
+        if(!$status||(int)$status['reserved']||!in_array($status['outcome'],['open','lost'],true)){throw new LeadInputException(['status'=>'This status requires a dedicated conversion or reopening action.']);}
+        return $this->mutate($user,$lead,$version,['status_id'=>(int)$status['id']],'status_changed','Pipeline status changed.',null,['status_from'=>(int)$lead['status_id'],'status_to'=>(int)$status['id'],'status_from_name'=>$lead['status_name'],'status_to_name'=>$status['name']]);
+    }
+    /** Used only by ConversionService inside its outer transaction. */
+    public function finishConversion(User $user,int $id,mixed $version,int $clientId):int
+    {
+        if($this->db->transDepth<1){throw new \LogicException('Conversion requires an outer transaction.');}
+        DatabaseUnitOfWork::lock($this->db,'leads',$id);
+        $lead=$this->find($user,$id);$this->policy->require($user,'convert',$lead);
+        (new ClientService($this->db))->find($user,$clientId);
+        if($lead['archived_at']||$lead['status_slug']!=='qualified'||$lead['outcome']!=='open'){throw new LeadInputException(['state'=>'Only an unarchived Qualified lead can be converted.']);}
+        $status=$this->db->table('lead_statuses')->where(['slug'=>'converted','outcome'=>'converted'])->get()->getRowArray();if(!$status){throw new LeadInputException(['status'=>'Converted status is unavailable.']);}
+        return $this->mutate($user,$lead,$version,['status_id'=>(int)$status['id']],'converted','Lead converted to a client.',null,['client_id'=>$clientId,'status_from'=>(int)$lead['status_id'],'status_to'=>(int)$status['id'],'status_from_name'=>$lead['status_name'],'status_to_name'=>$status['name']]);
     }
 }

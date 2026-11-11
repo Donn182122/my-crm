@@ -97,7 +97,7 @@ class LeadsCheck extends BaseCommand
             $this->login($credentials['reader']);[$status]=$this->http('GET','leads/'.$leadId);$this->check($status===200,'Read-only assignee can view');
             foreach(['','/archive','/restore'] as $suffix){[$status]=$this->post('leads/'.$leadId.$suffix,$data);$this->check($status===404,'Read-only assignee cannot mutate');}
             $this->login($credentials['admin']);foreach($children as $kind=>$child){[$status]=$this->post('leads/'.$leadId.'/'.$kind.'/'.$child.'/remove');$this->check(in_array($status,[302,303],true),'Remove '.$kind);}
-            foreach(['leads/'.$leadId.'/archive','leads/kanban','leads/'.$leadId.'/convert'] as $path){[$status]=$this->http('GET',$path);$this->check($status===404,'GET mutation or Phase 4B-2 endpoint unavailable');}
+            [$status]=$this->http('GET','leads/'.$leadId.'/archive');$this->check($status===404,'GET cannot archive');[$status]=$this->http('GET','leads/kanban');$this->check($status===200,'Kanban is authenticated');[$status]=$this->http('GET','leads/'.$leadId.'/convert');$this->check($status===422,'Unqualified conversion is rejected');
         }finally{
             foreach($leadIds as $id){$db->table('leads')->where('id',$id)->whereIn('created_by',$ids)->delete();}
             foreach($ids as $id){$db->table('auth_logins')->where('user_id',$id)->delete();$provider->delete($id,true);}foreach($emails as $email){$db->table('auth_logins')->where('identifier',$email)->delete();}curl_close($this->curl);unset($credentials);

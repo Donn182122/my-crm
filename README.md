@@ -76,10 +76,22 @@ See [Phase 4A implementation and verification](docs/phase-4a-clients.md) for the
 
 ## Phase 4B-1: Leads foundation
 
-Leads management is available at http://localhost:8081/leads. Administrators manage all leads and may assign eligible active users; ordinary users manage assigned leads only. Every mutation uses a version token, and stale changes return HTTP 409. Contacts, addresses, archive/restore and history are supported. Lost leads are read-only until an authorized explicit reopen operation; Converted is reserved for the next phase.
+Leads management is available at http://localhost:8081/leads. Administrators manage all leads and may assign eligible active users; ordinary users manage assigned leads only. Every mutation uses a version token, and stale changes return HTTP 409. Contacts, addresses, archive/restore and history are supported. Lost leads are read-only until an authorized explicit reopen operation; Converted is reserved for the dedicated conversion workflow.
 
 On the independent database only, apply the reviewed additive migration with `C:\xampp\php\php.exe spark migrate`, then run `C:\xampp\php\php.exe spark db:seed LeadReferenceSeeder`. The seeder is idempotent and preserves existing reference customizations. It does not copy or overwrite Clients records.
 
 Run `C:\xampp\php\php.exe spark leads:check` while dev.ps1 is serving the application. Run it sequentially with foundation:check and clients:check; it uses generated fictional fixtures and honors real login rate limits with bounded waits. test.ps1 includes isolated Leads tests.
 
-See [Phase 4B-1 verification](docs/phase-4b-1-leads.md) and [Phase 4B-2 plan](docs/phase-4b-2-plan.md). Kanban and lead-to-client conversion have not been implemented. No commit/push is included in this phase.
+See [Phase 4B-1 verification](docs/phase-4b-1-leads.md) and the historical [Phase 4B-2 plan](docs/phase-4b-2-plan.md). The verified Phase 4B-1 checkpoint is ae20a3e889735dafbc0ed1fecdafbeca8b894906; Phase 4B-2 branches directly from it.
+
+## Phase 4B-2: Pipeline and conversion
+
+The authenticated pipeline is at http://localhost:8081/leads/kanban. Columns follow configured status order and use the existing scoped search/source/status/owner filters, with at most 20 records per column and independent pagination. Drag an editable open lead or use its labeled stage selector and Move button. A conflict refreshes server state and requires review; it never silently retries a stale write. Lost leads require explicit authorized reopening, and Converted cannot be selected directly.
+
+An unarchived Qualified lead offers Review conversion. Choose Create or Link, review the server-generated mapping and related-record plan, then explicitly confirm. Searches expose authorized active clients only. New clients belong to the converting account. Linking preserves existing client fields and ownership. Optional contact/address copying requires editing permission; matching contact emails or identical full records/addresses are retained, including existing conflicting contact details. There is no automatic name-based company/person merge.
+
+Apply the reviewed additive CreateLeadConversions migration with `C:\xampp\php\php.exe spark migrate` against the independent database only. It adds one table with a unique lead and confirmation key plus three foreign keys. Conversion locks the lead and destination client and coordinates both modules in one transaction. Retrying an authorized conversion returns its original destination; viewing that destination always requires independent Clients authorization.
+
+Run `C:\xampp\php\php.exe spark pipeline:check` with the development server running, sequentially after the other verification commands. It checks actual HTTP security and runs simultaneous operations on separate MariaDB connections using generated fixture records, then removes those records. The private worker mode is for guarded generated verification jobs only. `test.ps1` includes disposable SQLite failure-injection/rollback tests and module regressions. Keep `.tools/`, sessions, logs and `.env` ignored.
+
+See [Phase 4B-2 verification](docs/phase-4b-2-verification.md) for changed files, migration details, security behavior, test evidence and limits. Phase 4B-2 is delivered as a reviewed local feature-branch checkpoint. See Git history for its commit; nothing is pushed or merged by this delivery.

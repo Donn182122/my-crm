@@ -17,18 +17,11 @@ class ClientService
         $validator=service('validation'); $validator->reset(); $validator->setRules($rules);
         if (!$validator->run($data)) { throw new ClientValidationException($validator->getErrors()); }
     }
-    private function write(callable $callback): mixed
+    private function write(callable $callback):mixed
     {
-        $this->db->transException(true)->transBegin();
-        try {
-            $result=$callback();
-            if (!$this->db->transStatus()) { throw new \RuntimeException('Client transaction failed.'); }
-            $this->db->transCommit(); return $result;
-        } catch (\Throwable $e) {
-            $this->db->transRollback();
-            if (str_contains($e->getMessage(),'Duplicate entry') || str_contains($e->getMessage(),'UNIQUE constraint')) {
-                throw new ClientValidationException(['duplicate'=>'That email or lookup name already exists. Please use a different value.']);
-            }
+        try{return DatabaseUnitOfWork::run($this->db,$callback);}
+        catch(\Throwable $e){
+            if(str_contains($e->getMessage(),'Duplicate entry')||str_contains($e->getMessage(),'UNIQUE constraint')){throw new ClientValidationException(['duplicate'=>'That email or lookup name already exists. Please use a different value.']);}
             throw $e;
         }
     }
@@ -111,7 +104,7 @@ class ClientService
         if ($data['type']==='company') { $data['first_name']=$data['last_name']=null; } else { $data['company_name']=null; }
         foreach (['email','phone','website','notes'] as $key) { if ($data[$key]==='') { $data[$key]=null; } }
         $data['status_id']=(int)$data['status_id']; $data['updated_at']=date('Y-m-d H:i:s');
-        return $this->write(function () use ($user,$data,$groups,$id) {
+        return $this->write(function () use ($user,$data,$groups,$id) { if($id!==null){DatabaseUnitOfWork::lock($this->db,'clients',$id);$this->writable($user,$id);}
             if ($id === null) {
                 $data['owner_id']=(int)$user->id; $data['created_at']=$data['updated_at']; $data['code']='CL-'.strtoupper(bin2hex(random_bytes(6)));
                 $this->db->table('clients')->insert($data); $id=(int)$this->db->insertID();
@@ -124,7 +117,7 @@ class ClientService
     public function archive(User $user, int $id, bool $archive): void
     {
         $this->writable($user,$id,'archive');
-        $this->db->table('clients')->where('id',$id)->update(['archived_at'=>$archive ? date('Y-m-d H:i:s') : null,'updated_at'=>date('Y-m-d H:i:s')]);
+        $this->write(function()use($user,$id,$archive){DatabaseUnitOfWork::lock($this->db,'clients',$id);$this->writable($user,$id,'archive');$this->db->table('clients')->where('id',$id)->update(['archived_at'=>$archive ? date('Y-m-d H:i:s') : null,'updated_at'=>date('Y-m-d H:i:s')]);});
     }
     public function child(User $user, int $clientId, string $kind, int $id): array
     {
@@ -155,7 +148,7 @@ class ClientService
         }
         foreach ($data as $key=>$value) { if ($value==='') { $data[$key]=null; } }
         $data['updated_at']=date('Y-m-d H:i:s');
-        return $this->write(function () use($data,$id,$clientId,$table) {
+        return $this->write(function () use($data,$id,$clientId,$table,$user) { DatabaseUnitOfWork::lock($this->db,'clients',$clientId);$this->writable($user,$clientId);
             if ($id===null) { $data['client_id']=$clientId; $data['created_at']=$data['updated_at']; $this->db->table($table)->insert($data); $id=(int)$this->db->insertID(); }
             else { $this->db->table($table)->where(['id'=>$id,'client_id'=>$clientId])->update($data); }
             $this->touch($clientId); return $id;
@@ -164,7 +157,7 @@ class ClientService
     public function removeChild(User $user, int $clientId, string $kind, int $id): void
     {
         $this->writable($user,$clientId); $this->child($user,$clientId,$kind,$id);
-        $this->write(function () use($kind,$id,$clientId) { $this->db->table($this->childTable($kind))->where(['id'=>$id,'client_id'=>$clientId])->delete(); $this->touch($clientId); });
+        $this->write(function () use($kind,$id,$clientId,$user) { DatabaseUnitOfWork::lock($this->db,'clients',$clientId);$this->writable($user,$clientId); $this->db->table($this->childTable($kind))->where(['id'=>$id,'client_id'=>$clientId])->delete(); $this->touch($clientId); });
     }
     private function touch(int $id): void { $this->db->table('clients')->where('id',$id)->update(['updated_at'=>date('Y-m-d H:i:s')]); }
     public function saveLookup(User $user, string $kind, array $input, ?int $id = null): void
@@ -179,5 +172,12 @@ class ClientService
             $data=['name'=>$name,'name_key'=>$key,'updated_at'=>date('Y-m-d H:i:s')];
             if ($id) {$this->db->table($table)->where('id',$id)->update($data);} else {$data['created_at']=$data['updated_at'];$this->db->table($table)->insert($data);}
         });
+    }
+    public function conversionCandidates(User $user,?string $email,string $name):array
+    {
+        $builder=$this->scoped($user)->where('c.archived_at',null)->groupStart();
+        if($email!==null&&$email!==''){$builder->where('c.email',mb_strtolower($email))->orWhere('c.display_name',$name);}else{$builder->where('c.display_name',$name);}
+        $builder->groupEnd();$total=(clone $builder)->countAllResults();
+        return ['rows'=>$builder->select('c.*')->orderBy('c.display_name')->orderBy('c.id')->limit(10)->get()->getResultArray(),'total'=>$total];
     }
 }

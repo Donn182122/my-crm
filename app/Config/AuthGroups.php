@@ -16,6 +16,7 @@ class AuthGroups extends ShieldAuthGroups
     public array $permissions = [
         'foundation.access' => 'Access the authenticated foundation.',
         'admin.access' => 'Access the administrator verification page.',
+        'leads.convert' => 'Convert authorized Qualified leads to authorized clients.',
         'leads.view' => 'View assigned leads.',
         'leads.create' => 'Create assigned leads.',
         'leads.edit' => 'Edit authorized open leads and their related entries.',
@@ -31,7 +32,7 @@ class AuthGroups extends ShieldAuthGroups
         'clients.lookups' => 'Manage shared client groups and statuses.',
     ];
     public array $matrix = [
-        'admin' => ['leads.view', 'leads.create', 'leads.edit', 'leads.archive', 'leads.manageall', 'leads.assign', 'leads.reopen', 'foundation.access', 'admin.access', 'clients.view', 'clients.create', 'clients.edit', 'clients.archive', 'clients.manageall', 'clients.lookups'],
-        'user' => ['leads.view', 'leads.create', 'leads.edit', 'leads.archive', 'foundation.access', 'clients.view', 'clients.create', 'clients.edit', 'clients.archive'],
+        'admin' => ['leads.convert', 'leads.view', 'leads.create', 'leads.edit', 'leads.archive', 'leads.manageall', 'leads.assign', 'leads.reopen', 'foundation.access', 'admin.access', 'clients.view', 'clients.create', 'clients.edit', 'clients.archive', 'clients.manageall', 'clients.lookups'],
+        'user' => ['leads.convert', 'leads.view', 'leads.create', 'leads.edit', 'leads.archive', 'foundation.access', 'clients.view', 'clients.create', 'clients.edit', 'clients.archive'],
     ];
 }

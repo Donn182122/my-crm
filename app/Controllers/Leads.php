@@ -13,7 +13,12 @@ class Leads extends BaseController
             'navigation'=>$nav->sections($user),'destinations'=>$nav->destinations($user)]);
     }
     public function index():string{return $this->render('index','Leads',$this->leads()->listing(auth()->user(),$this->request->getGet())+$this->leads()->lookups()+['owners'=>$this->leads()->owners(auth()->user())]);}
-    public function show(int $id):string{return $this->render('show','Lead profile',$this->leads()->details(auth()->user(),$id));}
+    public function show(int $id):string
+    {
+        $data=$this->leads()->details(auth()->user(),$id);$data['conversion']=null;
+        if($data['lead']['outcome']==='converted'){try{$data['conversion']=(new \App\Services\LeadConversionService())->result(auth()->user(),$id);}catch(\CodeIgniter\Exceptions\PageNotFoundException){/* Independent Clients access is required for the result link. */}}
+        return $this->render('show','Lead profile',$data);
+    }
     private function form(array $values,?int $id=null,array $errors=[],int $status=200):string{return $this->render('form',$id?'Edit lead':'Add lead',compact('values','id','errors')+$this->leads()->lookups()+['owners'=>$this->leads()->owners(auth()->user())],$status);}
     public function create():string
     {
