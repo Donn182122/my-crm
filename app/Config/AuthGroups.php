@@ -16,6 +16,13 @@ class AuthGroups extends ShieldAuthGroups
     public array $permissions = [
         'foundation.access' => 'Access the authenticated foundation.',
         'admin.access' => 'Access the administrator verification page.',
+        'tasks.view' => 'View tasks within current project and task scope.',
+        'tasks.create' => 'Create tasks as project owner/manager.',
+        'tasks.edit' => 'Edit managed tasks or tasks assigned to you.',
+        'tasks.status' => 'Change the status of permitted tasks.',
+        'tasks.assign' => 'Assign managed tasks to eligible participants.',
+        'tasks.archive' => 'Archive/restore managed tasks.',
+        'tasks.manageall' => 'Administer tasks with project administration permission.',
         'projects.view' => 'View explicitly authorized projects.',
         'projects.create' => 'Create projects for authorized clients.',
         'projects.edit' => 'Edit owned projects or assigned manager projects.',
@@ -39,7 +46,7 @@ class AuthGroups extends ShieldAuthGroups
         'clients.lookups' => 'Manage shared client groups and statuses.',
     ];
     public array $matrix = [
-        'admin' => ['projects.view','projects.create','projects.edit','projects.archive','projects.members','projects.assign','projects.manageall','leads.convert', 'leads.view', 'leads.create', 'leads.edit', 'leads.archive', 'leads.manageall', 'leads.assign', 'leads.reopen', 'foundation.access', 'admin.access', 'clients.view', 'clients.create', 'clients.edit', 'clients.archive', 'clients.manageall', 'clients.lookups'],
-        'user' => ['projects.view','projects.create','projects.edit','projects.archive','projects.members','leads.convert', 'leads.view', 'leads.create', 'leads.edit', 'leads.archive', 'foundation.access', 'clients.view', 'clients.create', 'clients.edit', 'clients.archive'],
+        'admin' => ['tasks.view','tasks.create','tasks.edit','tasks.status','tasks.assign','tasks.archive','tasks.manageall','projects.view','projects.create','projects.edit','projects.archive','projects.members','projects.assign','projects.manageall','leads.convert', 'leads.view', 'leads.create', 'leads.edit', 'leads.archive', 'leads.manageall', 'leads.assign', 'leads.reopen', 'foundation.access', 'admin.access', 'clients.view', 'clients.create', 'clients.edit', 'clients.archive', 'clients.manageall', 'clients.lookups'],
+        'user' => ['tasks.view','tasks.create','tasks.edit','tasks.status','tasks.assign','tasks.archive','projects.view','projects.create','projects.edit','projects.archive','projects.members','leads.convert', 'leads.view', 'leads.create', 'leads.edit', 'leads.archive', 'foundation.access', 'clients.view', 'clients.create', 'clients.edit', 'clients.archive'],
     ];
 }

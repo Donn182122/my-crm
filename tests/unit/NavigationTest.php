@@ -27,6 +27,9 @@ final class NavigationTest extends CIUnitTestCase
         $service = new NavigationService();
         $this->assertNull($service->find('settings', $this->user(false)));
         $this->assertNull($service->find('projects', $this->user(false)));
+        $this->assertNull($service->find('tasks', $this->user(false)));
+        $this->assertSame(site_url('tasks'), $service->find('tasks', $this->user(true))['url']);
+        $this->assertFalse($service->find('tasks', $this->user(true))['comingSoon']);
         $this->assertSame(site_url('projects'), $service->find('projects', $this->user(true))['url']);
         $this->assertFalse($service->find('projects', $this->user(true))['comingSoon']);
     }

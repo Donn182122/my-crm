@@ -64,3 +64,10 @@ $routes->group('projects',['filter'=>['session','permission:projects.view']],sta
     $routes->post('(:num)/archive','Projects::archive/$1');$routes->post('(:num)/restore','Projects::restore/$1');
     $routes->post('(:num)/members','Projects::addMember/$1');$routes->post('(:num)/members/(:num)/remove','Projects::removeMember/$1/$2');
 });
+
+// Tasks foundation: project/task policies and global session CSRF apply.
+$routes->group('tasks',['filter'=>['session','permission:tasks.view']],static function($routes){
+    $routes->get('','Tasks::index');$routes->get('new','Tasks::create');$routes->post('','Tasks::store');
+    $routes->get('(:num)','Tasks::show/$1');$routes->get('(:num)/edit','Tasks::edit/$1');$routes->post('(:num)','Tasks::update/$1');
+    $routes->post('(:num)/status','Tasks::status/$1');$routes->post('(:num)/assign','Tasks::assign/$1');$routes->post('(:num)/archive','Tasks::archive/$1');$routes->post('(:num)/restore','Tasks::restore/$1');
+});

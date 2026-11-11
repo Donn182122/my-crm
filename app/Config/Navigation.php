@@ -12,7 +12,7 @@ class Navigation extends BaseConfig
         'Workspace' => [
             ['dashboard', 'Dashboard', 'dashboard'], ['events', 'Events', 'calendar'],
             ['clients', 'Clients', 'users', [], 'clients.view'], ['projects', 'Projects', 'folder', [], 'projects.view'],
-            ['tasks', 'Tasks', 'check'], ['leads', 'Leads', 'layers', [], 'leads.view'],
+            ['tasks', 'Tasks', 'check', [], 'tasks.view'], ['leads', 'Leads', 'layers', [], 'leads.view'],
             ['subscriptions', 'Subscriptions', 'repeat'],
         ],
         'Business' => [

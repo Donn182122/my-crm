@@ -19,7 +19,7 @@ class Projects extends BaseController
     }
     public function show(int $id):string
     {
-        $s=$this->service();$data=$s->details(auth()->user(),$id);$data['people']=(new ProjectPolicy())->allows(auth()->user(),'members',$data['project'])?$s->people(auth()->user(),$this->query('person_q')):[];$data['personQuery']=$this->query('person_q');return $this->render('show','Project profile',$data);
+        $s=$this->service();$data=$s->details(auth()->user(),$id);$data['people']=(new ProjectPolicy())->allows(auth()->user(),'members',$data['project'])?$s->people(auth()->user(),$this->query('person_q')):[];$data['personQuery']=$this->query('person_q');$data['taskListing']=auth()->user()->can('tasks.view')?(new \App\Services\TaskService())->listing(auth()->user(),['project'=>(string)$id]):null;return $this->render('show','Project profile',$data);
     }
     private function form(array $values,?int $id=null,array $errors=[],int $status=200):string
     {

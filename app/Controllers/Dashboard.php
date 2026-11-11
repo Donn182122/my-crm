@@ -25,7 +25,7 @@ class Dashboard extends BaseController
 
     public function comingSoon(string $slug)
     {
-        if (in_array($slug, ['clients', 'leads', 'projects'], true)) { if ((new NavigationService())->find($slug, auth()->user()) === null) { throw PageNotFoundException::forPageNotFound(); } return redirect()->to(site_url($slug)); }
+        if (in_array($slug, ['clients', 'leads', 'projects', 'tasks'], true)) { if ((new NavigationService())->find($slug, auth()->user()) === null) { throw PageNotFoundException::forPageNotFound(); } return redirect()->to(site_url($slug)); }
         $item = (new NavigationService())->find($slug, auth()->user());
         if ($item === null || $slug === 'dashboard') { throw PageNotFoundException::forPageNotFound(); }
         return view('dashboard/coming_soon', $this->shell($item['label'], $item['parent'] ?? $slug, $slug) + ['module' => $item]);
