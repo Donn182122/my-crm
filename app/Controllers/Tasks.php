@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 namespace App\Controllers;
-use App\Services\{TaskCollaborationService,TaskService,TaskPolicy,TaskInputException,ProjectService,NavigationService};
+use App\Services\{TaskDependencyService,TaskCollaborationService,TaskService,TaskPolicy,TaskInputException,ProjectService,NavigationService};
 class Tasks extends BaseController
 {
     private function service():TaskService{return new TaskService();}
@@ -22,7 +22,7 @@ class Tasks extends BaseController
     }
     public function show(int $id):string
     {
-        $s=$this->service();$data=$s->details(auth()->user(),$id);$data['collaboration']=(new TaskCollaborationService())->details(auth()->user(),$id,$this->request->getGet());return $this->render('show','Task details',$data+$s->lookups()+['assignees'=>$s->assignees(auth()->user(),$data['project'],$this->query('assignee_q')),'assigneeQuery'=>$this->query('assignee_q')]);
+        $s=$this->service();$data=$s->details(auth()->user(),$id);$data['collaboration']=(new TaskCollaborationService())->details(auth()->user(),$id,$this->request->getGet());$data['dependencies']=(new TaskDependencyService())->details(auth()->user(),$id,$this->request->getGet());return $this->render('show','Task details',$data+$s->lookups()+['assignees'=>$s->assignees(auth()->user(),$data['project'],$this->query('assignee_q')),'assigneeQuery'=>$this->query('assignee_q')]);
     }
     private function form(array $values,?int $id=null,array $errors=[],int $status=200):string
     {

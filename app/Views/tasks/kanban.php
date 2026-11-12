@@ -17,7 +17,7 @@
 <div class="kanban-cards">
 <?php foreach($listing['rows'] as $task):$movable=$task['can_move']; ?>
 <article class="kanban-card task-card" data-task="<?= (int)$task['id'] ?>" data-version="<?= (int)$task['version'] ?>" data-status="<?= (int)$task['status_id'] ?>" draggable="<?= $movable?'true':'false' ?>">
-<div class="task-card-meta"><span><?= esc($task['code']) ?><?= $task['parent_id']!==null?' · Subtask':'' ?></span><span class="state-pill <?= $task['priority_slug']==='urgent'?'amber':'violet' ?>"><?= esc($task['priority_name']) ?></span></div>
+<?= view('tasks/dependency_badge',['dependencyTask'=>$task]) ?><div class="task-card-meta"><span><?= esc($task['code']) ?><?= $task['parent_id']!==null?' · Subtask':'' ?></span><span class="state-pill <?= $task['priority_slug']==='urgent'?'amber':'violet' ?>"><?= esc($task['priority_name']) ?></span></div>
 <h3><a href="<?= site_url('tasks/'.$task['id']) ?>"><?= esc($task['title']) ?></a></h3>
 <p>Project: <a class="subtle-link" href="<?= site_url('projects/'.$task['project_id']) ?>"><?= esc($task['project_name']) ?></a></p>
 <p>Assignee: <?= esc($task['assignee_name']?:'Unassigned') ?></p><p>Due: <?= esc($task['due_date']?:'Not set') ?></p>

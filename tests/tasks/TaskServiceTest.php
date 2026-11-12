@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 use App\Services\{TaskService,TaskInputException,ProjectService,ClientService};
-use App\Database\Migrations\{CreateClientManagement,CreateProjectManagement,CreateTaskManagement,CreateTaskCollaboration};
+use App\Database\Migrations\{CreateClientManagement,CreateProjectManagement,CreateTaskManagement,CreateTaskCollaboration,CreateTaskDependencies};
 use App\Database\Seeds\{ProjectReferenceSeeder,TaskReferenceSeeder};
 use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Shield\Entities\User;
@@ -19,10 +19,10 @@ final class TaskServiceTest extends CIUnitTestCase
     }
     protected function setUp():void
     {
-        parent::setUp();foreach(['2026-11-10-090000_CreateClientManagement','2026-11-11-090000_CreateProjectManagement','2026-11-11-100000_CreateTaskManagement','2026-11-11-110000_CreateTaskCollaboration'] as $file){require_once APPPATH.'Database/Migrations/'.$file.'.php';}
+        parent::setUp();foreach(['2026-11-10-090000_CreateClientManagement','2026-11-11-090000_CreateProjectManagement','2026-11-11-100000_CreateTaskManagement','2026-11-11-110000_CreateTaskCollaboration','2026-11-11-120000_CreateTaskDependencies'] as $file){require_once APPPATH.'Database/Migrations/'.$file.'.php';}
         $this->connection=Database::connect(['DBDriver'=>'SQLite3','database'=>':memory:','DBPrefix'=>'','foreignKeys'=>true,'DBDebug'=>true,'dateFormat'=>['date'=>'Y-m-d','datetime'=>'Y-m-d H:i:s','time'=>'H:i:s']],false);
         $this->connection->query('CREATE TABLE users(id INTEGER PRIMARY KEY,username VARCHAR(30),active INTEGER)');foreach(range(1,6) as $id){$this->connection->table('users')->insert(['id'=>$id,'username'=>'Fictional'.$id,'active'=>1]);}
-        $forge=Database::forge($this->connection);(new CreateClientManagement($forge))->up();(new CreateProjectManagement($forge))->up();(new CreateTaskManagement($forge))->up();(new CreateTaskCollaboration($forge))->up();
+        $forge=Database::forge($this->connection);(new CreateClientManagement($forge))->up();(new CreateProjectManagement($forge))->up();(new CreateTaskManagement($forge))->up();(new CreateTaskCollaboration($forge))->up();(new CreateTaskDependencies($forge))->up();
         (new ProjectReferenceSeeder(config('Database'),$this->connection))->run();(new TaskReferenceSeeder(config('Database'),$this->connection))->run();
         $resolver=fn($id)=>$this->actor($id);$this->projects=new ProjectService($this->connection,$resolver);$this->tasks=new TaskService($this->connection,$resolver);
         $client=(new ClientService($this->connection))->save($this->actor(),['type'=>'company','company_name'=>'Fictional private client','status_id'=>'1']);
@@ -123,7 +123,7 @@ final class TaskServiceTest extends CIUnitTestCase
     public function testSeederAndDisposableMigrationIntegrity():void
     {
         $this->connection->table('task_priorities')->where('id',1)->update(['name'=>'Custom low']);(new TaskReferenceSeeder(config('Database'),$this->connection))->run();$this->assertSame('Custom low',$this->connection->table('task_priorities')->where('id',1)->get()->getRow('name'));$this->assertCount(5,$this->tasks->lookups()['statuses']);$this->assertCount(4,$this->tasks->lookups()['priorities']);
-        $forge=Database::forge($this->connection);(new CreateTaskCollaboration($forge))->down();(new CreateTaskManagement($forge))->down();$this->assertFalse($this->connection->tableExists('tasks'));$this->assertNotNull($this->projects->find($this->actor(),$this->project));(new CreateTaskManagement($forge))->up();(new CreateTaskCollaboration($forge))->up();(new TaskReferenceSeeder(config('Database'),$this->connection))->run();$this->assertGreaterThan(0,$this->create());
+        $forge=Database::forge($this->connection);(new CreateTaskDependencies($forge))->down();(new CreateTaskCollaboration($forge))->down();(new CreateTaskManagement($forge))->down();$this->assertFalse($this->connection->tableExists('tasks'));$this->assertNotNull($this->projects->find($this->actor(),$this->project));(new CreateTaskManagement($forge))->up();(new CreateTaskCollaboration($forge))->up();(new CreateTaskDependencies($forge))->up();(new TaskReferenceSeeder(config('Database'),$this->connection))->run();$this->assertGreaterThan(0,$this->create());
     }
     public function testForeignKeysAndHistoryVersionUniqueness():void
     {

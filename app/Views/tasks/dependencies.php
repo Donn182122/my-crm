@@ -1,0 +1,23 @@
+<?php $d=$dependencies;$taskId=(int)$task['id']; ?>
+<section class="crm-card client-panel" id="task-dependencies"><h2>Task dependencies</h2>
+<?php if($task['parent_id']!==null): ?><p class="text-secondary">Explicit dependencies apply to top-level tasks only. Subtasks retain independent completion and do not inherit parent dependencies.</p>
+<?php else: ?>
+<?= view('tasks/dependency_badge',['dependencyTask'=>$task]) ?>
+<p class="text-secondary mt-3"><?= $task['dependency_state']==='blocked'?'Completion is blocked until all required prerequisites are Done. A project manager can review restricted prerequisites.':'All required prerequisites are Done, or none are linked. This does not automatically complete or move the task.' ?></p>
+<p class="text-secondary">Only independently authorized related tasks are listed. Archived incomplete prerequisites still block completion; Cancelled does not count as Done.</p>
+<?php foreach(['prerequisites'=>'Prerequisites','dependents'=>'Dependent tasks'] as $key=>$heading):$list=$d[$key]; ?>
+<div class="mt-4" id="task-<?= $key ?>"><h3><?= $heading ?></h3>
+<?php foreach($list['rows'] as $related): ?><article class="client-entry" data-dependency="<?= (int)$related['edge_id'] ?>"><h3><a class="subtle-link" href="<?= site_url('tasks/'.$related['id']) ?>"><?= esc($related['title']) ?></a></h3><p><?= esc($related['code']) ?> · <?= esc($related['status_name']) ?><?= $related['archived_at']?' · Archived':'' ?></p>
+<?php if($related['can_remove']): ?><details class="client-remove"><summary>Remove dependency</summary><form method="post" action="<?= site_url('tasks/'.$taskId.'/dependencies/'.$related['edge_id'].'/remove') ?>"><?= csrf_field() ?><input type="hidden" name="version" value="<?= (int)$task['version'] ?>"><input type="hidden" name="other_version" value="<?= (int)$related['version'] ?>"><input type="hidden" name="edge_version" value="<?= (int)$related['edge_version'] ?>"><p>Remove this prerequisite relationship? Both tasks retain their current status and history.</p><button class="btn btn-outline-warning" type="submit">Confirm removal</button></form></details><?php endif ?></article><?php endforeach ?>
+<?php if(!$list['rows']): ?><p class="text-secondary">No authorized <?= strtolower($heading) ?> to display.</p><?php endif ?>
+<nav class="client-pagination" aria-label="<?= $heading ?> pagination"><span>Page <?= (int)$list['page'] ?> of <?= (int)$list['pages'] ?></span><div><?php foreach([-1=>'Previous',1=>'Next'] as $offset=>$label):$next=$list['page']+$offset;if($next<1||$next>$list['pages'])continue; ?><a class="subtle-link" href="<?= site_url('tasks/'.$taskId.'?'.$key.'_page='.$next.'#task-'.$key) ?>"><?= $label ?></a><?php endforeach ?></div></nav></div>
+<?php endforeach ?>
+<?php if($d['canManage']): ?>
+<details class="mt-4" id="dependency-add"><summary>Add prerequisite</summary><p class="text-secondary mt-3">Finish-to-Start prerequisite for completion. Select an unarchived top-level task in this project. A change advances both task versions.</p>
+<form method="get" action="<?= site_url('tasks/'.$taskId.'#dependency-add') ?>"><label for="dependency_q">Find prerequisites by title or task code</label><div class="client-actions mt-2"><input class="form-control" id="dependency_q" name="dependency_q" maxlength="100" value="<?= esc($d['q']) ?>"><button class="btn btn-outline-light" type="submit">Find tasks</button></div></form>
+<p class="text-secondary mt-3">Up to 20 authorized choices. Search again to narrow results.</p>
+<?php foreach($d['choices'] as $choice): ?><article class="client-entry dependency-choice"><h3><?= esc($choice['title']) ?></h3><p><?= esc($choice['code']) ?> · <?= esc($choice['status_name']) ?></p><form method="post" action="<?= site_url('tasks/'.$taskId.'/dependencies') ?>"><?= csrf_field() ?><input type="hidden" name="predecessor_id" value="<?= (int)$choice['id'] ?>"><input type="hidden" name="version" value="<?= (int)$task['version'] ?>"><input type="hidden" name="other_version" value="<?= (int)$choice['version'] ?>"><button class="btn btn-teal" type="submit" aria-label="Add <?= esc($choice['title']) ?> as prerequisite">Add prerequisite</button></form></article><?php endforeach ?>
+<?php if(!$d['choices']): ?><p class="text-secondary">No eligible prerequisite choices match this search.</p><?php endif ?></details>
+<?php endif ?>
+<p class="text-secondary mt-3 mb-0">Reopening a Done prerequisite is blocked while a dependent remains Done. Restore archived endpoints before managing relationships. No automatic status changes occur.</p>
+<?php endif ?></section>

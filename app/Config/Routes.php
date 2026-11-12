@@ -68,6 +68,7 @@ $routes->group('projects',['filter'=>['session','permission:projects.view']],sta
 // Tasks foundation: project/task policies and global session CSRF apply.
 $routes->group('tasks',['filter'=>['session','permission:tasks.view']],static function($routes){
     $routes->get('','Tasks::index');$routes->get('kanban','Tasks::kanban');$routes->get('new','Tasks::create');$routes->post('','Tasks::store');
+    $routes->post('(:num)/dependencies','TaskDependencies::add/$1');$routes->post('(:num)/dependencies/(:num)/remove','TaskDependencies::remove/$1/$2');
     $routes->post('(:num)/checklist','TaskCollaboration::addItem/$1');$routes->post('(:num)/checklist/(:num)','TaskCollaboration::editItem/$1/$2');
     $routes->post('(:num)/checklist/(:num)/toggle','TaskCollaboration::toggleItem/$1/$2');$routes->post('(:num)/checklist/(:num)/archive','TaskCollaboration::archiveItem/$1/$2');$routes->post('(:num)/checklist/(:num)/move','TaskCollaboration::moveItem/$1/$2');
     $routes->post('(:num)/comments','TaskCollaboration::addComment/$1');$routes->post('(:num)/comments/(:num)','TaskCollaboration::editComment/$1/$2');$routes->post('(:num)/comments/(:num)/hide','TaskCollaboration::hideComment/$1/$2');

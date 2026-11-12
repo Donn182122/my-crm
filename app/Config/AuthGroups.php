@@ -16,6 +16,7 @@ class AuthGroups extends ShieldAuthGroups
     public array $permissions = [
         'foundation.access' => 'Access the authenticated foundation.',
         'admin.access' => 'Access the administrator verification page.',
+        'tasks.dependencies' => 'Manage same-project top-level dependencies as task manager.',
         'tasks.checklist' => 'Manage checklists on tasks you may edit.',
         'tasks.comment' => 'Comment and edit/hide your own comments on visible writable tasks.',
         'tasks.comments.moderate' => 'Hide other comments as an authorized task manager.',
@@ -49,7 +50,7 @@ class AuthGroups extends ShieldAuthGroups
         'clients.lookups' => 'Manage shared client groups and statuses.',
     ];
     public array $matrix = [
-        'admin' => ['tasks.checklist','tasks.comment','tasks.comments.moderate','tasks.view','tasks.create','tasks.edit','tasks.status','tasks.assign','tasks.archive','tasks.manageall','projects.view','projects.create','projects.edit','projects.archive','projects.members','projects.assign','projects.manageall','leads.convert', 'leads.view', 'leads.create', 'leads.edit', 'leads.archive', 'leads.manageall', 'leads.assign', 'leads.reopen', 'foundation.access', 'admin.access', 'clients.view', 'clients.create', 'clients.edit', 'clients.archive', 'clients.manageall', 'clients.lookups'],
-        'user' => ['tasks.checklist','tasks.comment','tasks.view','tasks.create','tasks.edit','tasks.status','tasks.assign','tasks.archive','projects.view','projects.create','projects.edit','projects.archive','projects.members','leads.convert', 'leads.view', 'leads.create', 'leads.edit', 'leads.archive', 'foundation.access', 'clients.view', 'clients.create', 'clients.edit', 'clients.archive'],
+        'admin' => ['tasks.dependencies','tasks.checklist','tasks.comment','tasks.comments.moderate','tasks.view','tasks.create','tasks.edit','tasks.status','tasks.assign','tasks.archive','tasks.manageall','projects.view','projects.create','projects.edit','projects.archive','projects.members','projects.assign','projects.manageall','leads.convert', 'leads.view', 'leads.create', 'leads.edit', 'leads.archive', 'leads.manageall', 'leads.assign', 'leads.reopen', 'foundation.access', 'admin.access', 'clients.view', 'clients.create', 'clients.edit', 'clients.archive', 'clients.manageall', 'clients.lookups'],
+        'user' => ['tasks.dependencies','tasks.checklist','tasks.comment','tasks.view','tasks.create','tasks.edit','tasks.status','tasks.assign','tasks.archive','projects.view','projects.create','projects.edit','projects.archive','projects.members','leads.convert', 'leads.view', 'leads.create', 'leads.edit', 'leads.archive', 'foundation.access', 'clients.view', 'clients.create', 'clients.edit', 'clients.archive'],
     ];
 }

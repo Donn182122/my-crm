@@ -14,7 +14,7 @@ class TaskPolicy
         if(!(new ProjectPolicy())->allows($user,'view',$project)||!$user->can('tasks.view')||!$user->can('tasks.'.$action)){return false;}
         if($task&&(int)$task['project_id']!==(int)$project['id']){return false;}$manager=$this->manager($user,$project);
         if($action==='view'){return $manager||($task&&$task['archived_at']===null&&((int)($task['assignee_id']??0)===(int)$user->id||(int)$task['created_by']===(int)$user->id));}
-        return match($action){'create','assign','archive'=>$manager,'checklist','edit','status'=>$manager||($task&&(int)($task['assignee_id']??0)===(int)$user->id),'comment'=>$manager||($task&&$task['archived_at']===null&&((int)($task['assignee_id']??0)===(int)$user->id||(int)$task['created_by']===(int)$user->id)),'comments.moderate'=>$manager,default=>false};
+        return match($action){'create','assign','archive','dependencies'=>$manager,'checklist','edit','status'=>$manager||($task&&(int)($task['assignee_id']??0)===(int)$user->id),'comment'=>$manager||($task&&$task['archived_at']===null&&((int)($task['assignee_id']??0)===(int)$user->id||(int)$task['created_by']===(int)$user->id)),'comments.moderate'=>$manager,default=>false};
     }
     public function require(User $user,string $action,array $project,?array $task=null):void{if(!$this->allows($user,$action,$project,$task)){throw PageNotFoundException::forPageNotFound();}}
 }

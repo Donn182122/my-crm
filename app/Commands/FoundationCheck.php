@@ -31,7 +31,7 @@ class FoundationCheck extends BaseCommand
         }
         $fk = $db->query("SELECT COUNT(*) AS n FROM information_schema.TABLE_CONSTRAINTS WHERE TABLE_SCHEMA=DATABASE() AND CONSTRAINT_TYPE='FOREIGN KEY'")->getRow()->n;
         $this->check((int) $fk >= 4, 'Authentication foreign keys exist');
-        $this->check(count($db->table('migrations')->get()->getResultArray()) === 10, 'Four upstream migrations plus Clients, Leads, conversion, Projects, Tasks and collaboration migrations recorded');
+        $this->check(count($db->table('migrations')->get()->getResultArray()) === 11, 'Four upstream migrations plus Clients, Leads, conversion, Projects, Tasks, collaboration and dependencies migrations recorded');
 
         $debugBefore = glob(WRITEPATH.'debugbar/*.json') ?: [];
         $provider = auth()->getProvider();

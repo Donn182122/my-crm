@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 use App\Services\{TaskCollaborationService,TaskService,TaskInputException,ProjectService,ClientService};
-use App\Database\Migrations\{CreateClientManagement,CreateProjectManagement,CreateTaskManagement,CreateTaskCollaboration};
+use App\Database\Migrations\{CreateClientManagement,CreateProjectManagement,CreateTaskManagement,CreateTaskCollaboration,CreateTaskDependencies};
 use App\Database\Seeds\{ProjectReferenceSeeder,TaskReferenceSeeder};
 use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Shield\Entities\User;
@@ -19,10 +19,10 @@ final class TaskCollaborationServiceTest extends CIUnitTestCase
     }
     protected function setUp():void
     {
-        parent::setUp();foreach(['2026-11-10-090000_CreateClientManagement','2026-11-11-090000_CreateProjectManagement','2026-11-11-100000_CreateTaskManagement','2026-11-11-110000_CreateTaskCollaboration'] as $file){require_once APPPATH.'Database/Migrations/'.$file.'.php';}
+        parent::setUp();foreach(['2026-11-10-090000_CreateClientManagement','2026-11-11-090000_CreateProjectManagement','2026-11-11-100000_CreateTaskManagement','2026-11-11-110000_CreateTaskCollaboration','2026-11-11-120000_CreateTaskDependencies'] as $file){require_once APPPATH.'Database/Migrations/'.$file.'.php';}
         $this->connection=Database::connect(['DBDriver'=>'SQLite3','database'=>':memory:','DBPrefix'=>'','foreignKeys'=>true,'DBDebug'=>true,'dateFormat'=>['date'=>'Y-m-d','datetime'=>'Y-m-d H:i:s','time'=>'H:i:s']],false);
         $this->connection->query('CREATE TABLE users(id INTEGER PRIMARY KEY,username VARCHAR(30),active INTEGER)');foreach(range(1,6) as $id){$this->connection->table('users')->insert(['id'=>$id,'username'=>'Fictional'.$id,'active'=>1]);}
-        $forge=Database::forge($this->connection);(new CreateClientManagement($forge))->up();(new CreateProjectManagement($forge))->up();(new CreateTaskManagement($forge))->up();(new CreateTaskCollaboration($forge))->up();
+        $forge=Database::forge($this->connection);(new CreateClientManagement($forge))->up();(new CreateProjectManagement($forge))->up();(new CreateTaskManagement($forge))->up();(new CreateTaskCollaboration($forge))->up();(new CreateTaskDependencies($forge))->up();
         (new ProjectReferenceSeeder(config('Database'),$this->connection))->run();(new TaskReferenceSeeder(config('Database'),$this->connection))->run();
         $resolver=fn($id)=>$this->actor($id);$this->projects=new ProjectService($this->connection,$resolver);$this->tasks=new TaskService($this->connection,$resolver);$this->collaboration=new TaskCollaborationService($this->connection,$resolver);
         $client=(new ClientService($this->connection))->save($this->actor(),['type'=>'company','company_name'=>'Fictional private client','status_id'=>'1']);
@@ -130,7 +130,7 @@ final class TaskCollaborationServiceTest extends CIUnitTestCase
     }
     public function testAdditiveMigrationRollbackRetainsExistingTasksAndHistory():void
     {
-        $id=$this->create();$before=$this->connection->table('tasks')->where('id',$id)->get()->getRowArray();$forge=Database::forge($this->connection);(new CreateTaskCollaboration($forge))->down();$after=$this->connection->table('tasks')->where('id',$id)->get()->getRowArray();unset($before['parent_id']);$this->assertSame($before,$after);$this->assertSame(1,$this->connection->table('task_history')->countAllResults());(new CreateTaskCollaboration($forge))->up();$this->assertNull($this->tasks->find($this->actor(),$id)['parent_id']);
+        $id=$this->create();$before=$this->connection->table('tasks')->where('id',$id)->get()->getRowArray();$forge=Database::forge($this->connection);(new CreateTaskDependencies($forge))->down();(new CreateTaskCollaboration($forge))->down();$after=$this->connection->table('tasks')->where('id',$id)->get()->getRowArray();unset($before['parent_id']);$this->assertSame($before,$after);$this->assertSame(1,$this->connection->table('task_history')->countAllResults());(new CreateTaskCollaboration($forge))->up();(new CreateTaskDependencies($forge))->up();$this->assertNull($this->tasks->find($this->actor(),$id)['parent_id']);
     }
     public function testParentForeignKeyRejectsOrphans():void
     {

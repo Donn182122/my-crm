@@ -18,17 +18,17 @@ class TaskService
         if(!$user->can('projects.manageall')){$q->groupStart()->where('p.owner_id',(int)$user->id)->orGroupStart()->where('mine.user_id',(int)$user->id)->where('p.archived_at',null)->groupEnd()->groupEnd();}
         if(!$this->policy->administrator($user)){$q->groupStart()->where('p.owner_id',(int)$user->id)->orWhere('mine.role','manager')->orWhere('t.assignee_id',(int)$user->id)->orWhere('t.created_by',(int)$user->id)->groupEnd();$q->groupStart()->where('t.archived_at',null)->orWhere('p.owner_id',(int)$user->id)->orWhere('mine.role','manager')->groupEnd();}if(!$this->policy->administrator($user)){$q->groupStart()->where('ancestor.archived_at',null)->orWhere('p.owner_id',(int)$user->id)->orWhere('mine.role','manager')->groupEnd();}return $q;
     }
-    private function columns():string{return 't.*,ancestor.archived_at AS parent_archived_at,p.name AS project_name,p.archived_at AS project_archived_at,ps.slug AS project_status_slug,s.name AS status_name,s.category,s.slug AS status_slug,pr.name AS priority_name,pr.slug AS priority_slug,creator.username AS creator_name,assignee.username AS assignee_name';}
+    private function columns():string{return "t.*,ancestor.archived_at AS parent_archived_at,p.name AS project_name,p.archived_at AS project_archived_at,ps.slug AS project_status_slug,s.name AS status_name,s.category,s.slug AS status_slug,pr.name AS priority_name,pr.slug AS priority_slug,creator.username AS creator_name,assignee.username AS assignee_name, CASE WHEN t.parent_id IS NOT NULL THEN 'not-applicable' WHEN EXISTS (SELECT 1 FROM task_dependencies dep JOIN tasks predecessor ON predecessor.id=dep.predecessor_id JOIN task_statuses predecessor_status ON predecessor_status.id=predecessor.status_id WHERE dep.successor_id=t.id AND dep.archived_at IS NULL AND predecessor_status.category <> 'done') THEN 'blocked' ELSE 'ready' END AS dependency_state";}
     public function find(User $user,int $id):array
     {
-        $task=$this->scoped($user)->select($this->columns())->where('t.id',$id)->get()->getRowArray();if(!$task){throw PageNotFoundException::forPageNotFound();}$project=$this->projects->find($user,(int)$task['project_id']);$this->policy->require($user,'view',$project,$task);return $task;
+        $task=$this->scoped($user)->select($this->columns(),false)->where('t.id',$id)->get()->getRowArray();if(!$task){throw PageNotFoundException::forPageNotFound();}$project=$this->projects->find($user,(int)$task['project_id']);$this->policy->require($user,'view',$project,$task);return $task;
     }
     public function listing(User $user,array $input):array
     {
         $q=mb_substr($this->input($input,'q'),0,100);$project=ctype_digit($this->input($input,'project'))?(int)$input['project']:0;if($project){$this->projects->find($user,$project);}
         $status=ctype_digit($this->input($input,'status'))?(int)$input['status']:0;$priority=ctype_digit($this->input($input,'priority'))?(int)$input['priority']:0;$assignee=ctype_digit($this->input($input,'assignee'))?(int)$input['assignee']:0;$archive=$this->input($input,'archive')==='archived'?'archived':'active';
         $query=$this->scoped($user)->where('t.archived_at IS '.($archive==='archived'?'NOT NULL':'NULL'),null,false);foreach(['project_id'=>$project,'status_id'=>$status,'priority_id'=>$priority,'assignee_id'=>$assignee] as $field=>$value){if($value){$query->where('t.'.$field,$value);}}
-        if($q!==''){$query->groupStart()->like('t.title',$q)->orLike('t.code',$q)->groupEnd();}$total=(clone $query)->countAllResults();$pages=max(1,(int)ceil($total/20));$page=min($pages,max(1,min(100000,(int)$this->input($input,'page'))));$rows=$query->select($this->columns())->orderBy('t.title')->orderBy('t.code')->orderBy('t.id')->limit(20,($page-1)*20)->get()->getResultArray();return compact('rows','total','pages','page','q','project','status','priority','assignee','archive');
+        if($q!==''){$query->groupStart()->like('t.title',$q)->orLike('t.code',$q)->groupEnd();}$total=(clone $query)->countAllResults();$pages=max(1,(int)ceil($total/20));$page=min($pages,max(1,min(100000,(int)$this->input($input,'page'))));$rows=$query->select($this->columns(),false)->orderBy('t.title')->orderBy('t.code')->orderBy('t.id')->limit(20,($page-1)*20)->get()->getResultArray();return compact('rows','total','pages','page','q','project','status','priority','assignee','archive');
     }
     /** Read-only board projection; all status writes still use status(). */
     public function board(User $user,array $input):array
@@ -59,14 +59,29 @@ class TaskService
     }
     public function children(User $user,int $id,array $input=[]):array
     {
-        $this->find($user,$id);$archive=($input['subtasks_archive']??'')==='archived'?'archived':'active';$query=$this->scoped($user)->where('t.parent_id',$id)->where('t.archived_at IS '.($archive==='archived'?'NOT NULL':'NULL'),null,false);$total=(clone $query)->countAllResults();$pages=max(1,(int)ceil($total/20));$requested=$input['subtasks_page']??1;$page=min($pages,max(1,is_scalar($requested)?(int)$requested:1));$rows=$query->select($this->columns())->orderBy('t.title')->orderBy('t.code')->limit(20,($page-1)*20)->get()->getResultArray();return compact('rows','total','pages','page','archive');
+        $this->find($user,$id);$archive=($input['subtasks_archive']??'')==='archived'?'archived':'active';$query=$this->scoped($user)->where('t.parent_id',$id)->where('t.archived_at IS '.($archive==='archived'?'NOT NULL':'NULL'),null,false);$total=(clone $query)->countAllResults();$pages=max(1,(int)ceil($total/20));$requested=$input['subtasks_page']??1;$page=min($pages,max(1,is_scalar($requested)?(int)$requested:1));$rows=$query->select($this->columns(),false)->orderBy('t.title')->orderBy('t.code')->limit(20,($page-1)*20)->get()->getResultArray();return compact('rows','total','pages','page','archive');
     }
     /** Related writes inherit task access, lock order, CAS and atomic history. */
     public function collaborate(User $user,int $id,mixed $version,string $action,string $event,callable $change):void
     {
-        $events=['checklist'=>['checklist_added','checklist_updated','checklist_completed','checklist_reopened','checklist_archived','checklist_reordered'],'comment'=>['comment_added','comment_edited','comment_hidden']];
+        $events=['dependencies'=>['dependency_added','dependency_removed'],'checklist'=>['checklist_added','checklist_updated','checklist_completed','checklist_reopened','checklist_archived','checklist_reordered'],'comment'=>['comment_added','comment_edited','comment_hidden']];
         if(!isset($events[$action])||!in_array($event,$events[$action],true)){throw new \LogicException('Unsupported collaboration action.');}
         $this->mutate($user,$id,$version,$action,$event,function($project,$task)use($change){$change($project,$task);return [];});
+    }
+    /** Current independent Task scope is reused for every graph lookup and visible count. */
+    public function dependencyRelations(User $user,int $id,bool $prerequisites,array $input=[]):array
+    {
+        $this->find($user,$id);$other=$prerequisites?'predecessor_id':'successor_id';$current=$prerequisites?'successor_id':'predecessor_id';$key=$prerequisites?'prerequisites_page':'dependents_page';
+        $query=$this->scoped($user)->join('task_dependencies edge','edge.'.$other.'=t.id')->where(['edge.'.$current=>$id,'edge.archived_at'=>null]);
+        $total=(clone $query)->countAllResults();$pages=max(1,(int)ceil($total/20));$requested=$input[$key]??1;$page=min($pages,max(1,is_scalar($requested)?(int)$requested:1));
+        $rows=$query->select($this->columns().',edge.id AS edge_id,edge.version AS edge_version',false)->orderBy('t.title')->orderBy('t.code')->limit(20,($page-1)*20)->get()->getResultArray();return compact('rows','total','pages','page');
+    }
+    public function dependencyChoices(User $user,int $id,string $query=''):array
+    {
+        $task=$this->find($user,$id);$project=$this->projects->find($user,(int)$task['project_id']);$this->policy->require($user,'dependencies',$project,$task);
+        $q=$this->scoped($user)->where(['t.project_id'=>$task['project_id'],'t.parent_id'=>null,'t.archived_at'=>null])->where('t.id !=',$id)->where('NOT EXISTS (SELECT 1 FROM task_dependencies existing_dependency WHERE existing_dependency.predecessor_id=t.id AND existing_dependency.successor_id='.(int)$id.' AND existing_dependency.archived_at IS NULL)',null,false);
+        if(trim($query)!==''){$q->groupStart()->like('t.title',mb_substr(trim($query),0,100))->orLike('t.code',mb_substr(trim($query),0,100))->groupEnd();}
+        return $q->select($this->columns(),false)->orderBy('t.title')->orderBy('t.code')->limit(20)->get()->getResultArray();
     }
     public function lookups():array{return ['statuses'=>$this->db->table('task_statuses')->orderBy('position')->orderBy('id')->get()->getResultArray(),'priorities'=>$this->db->table('task_priorities')->orderBy('position')->orderBy('id')->get()->getResultArray()];}
     public function details(User $user,int $id):array
@@ -129,10 +144,10 @@ class TaskService
         else{$this->db->table('tasks')->insert($data+['code'=>'TK-'.strtoupper(bin2hex(random_bytes(6))),'project_id'=>(int)$project['id'],'created_by'=>(int)$user->id,'version'=>1,'created_at'=>$now]);$id=(int)$this->db->insertID();}
         $metadata=[];if(array_key_exists('status_id',$data)){$metadata['status_from']=$task['status_name']??null;$metadata['status_to']=$this->db->table('task_statuses')->where('id',$data['status_id'])->get()->getRow('name');}
         if(array_key_exists('assignee_id',$data)){$metadata['assignee_from']=$task['assignee_name']??null;$metadata['assignee_to']=$data['assignee_id']?$this->db->table('users')->where('id',$data['assignee_id'])->get()->getRow('username'):null;}
-        $summary=match($event){'checklist_added'=>'Checklist item added.','checklist_updated'=>'Checklist item updated.','checklist_completed'=>'Checklist item completed.','checklist_reopened'=>'Checklist item reopened.','checklist_archived'=>'Checklist item archived.','checklist_reordered'=>'Checklist order changed.','comment_added'=>'Comment added.','comment_edited'=>'Comment edited.','comment_hidden'=>'Comment hidden.','created'=>'Task created.','status_changed'=>'Task status changed.','assigned'=>'Task assignment changed.','archived'=>'Task archived.','restored'=>'Task restored.',default=>'Task information updated.'};
+        $summary=match($event){'dependency_added'=>'Task dependency added.','dependency_removed'=>'Task dependency removed.','checklist_added'=>'Checklist item added.','checklist_updated'=>'Checklist item updated.','checklist_completed'=>'Checklist item completed.','checklist_reopened'=>'Checklist item reopened.','checklist_archived'=>'Checklist item archived.','checklist_reordered'=>'Checklist order changed.','comment_added'=>'Comment added.','comment_edited'=>'Comment edited.','comment_hidden'=>'Comment hidden.','created'=>'Task created.','status_changed'=>'Task status changed.','assigned'=>'Task assignment changed.','archived'=>'Task archived.','restored'=>'Task restored.',default=>'Task information updated.'};
         $this->db->table('task_history')->insert(['task_id'=>$id,'actor_id'=>(int)$user->id,'version'=>$version,'event'=>$event,'summary'=>$summary,'metadata'=>json_encode($metadata,JSON_THROW_ON_ERROR),'created_at'=>$now,'updated_at'=>$now]);return $id;
     }
-    private function completion(array $status,?array $task):?string{return $status['category']==='done'?($task&&$task['category']==='done'?$task['completed_at']:date('Y-m-d H:i:s')):null;}
+    private function completion(array $status,?array $task):?string{if($task){TaskDependencyRules::guardStatus($this->db,$task,$status);}return $status['category']==='done'?($task&&$task['category']==='done'?$task['completed_at']:date('Y-m-d H:i:s')):null;}
     public function save(User $user,array $input,?int $id=null):int
     {
         $task=$id?$this->find($user,$id):null;$projectId=$task?(int)$task['project_id']:$this->positive($input['project_id']??null,'project');$project=$this->projects->find($user,$projectId);$this->policy->require($user,$id?'edit':'create',$project,$task);
